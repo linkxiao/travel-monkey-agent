@@ -68,6 +68,7 @@ body {
 }
 .controls input,
 .controls select,
+.session-bar select,
 .composer textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -78,7 +79,8 @@ body {
   font: inherit;
   font-size: 13px;
 }
-.controls select option { color: #1c1914; }
+.controls select option,
+.session-bar select option { color: #1c1914; }
 
 .log {
   flex: 1;
@@ -253,6 +255,26 @@ body {
   font-size: 14px; line-height: 1; opacity: 0.6;
 }
 .chip button:hover { opacity: 1; }
+
+.session-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 22px 0;
+}
+.session-bar select { flex: 1; min-width: 0; }
+.session-bar button { flex: none; padding: 6px 12px; }
+
+.facts-board { padding-bottom: 4px; }
+.facts-board .plan-ask-k { margin-bottom: 8px; }
+.chip.fact { padding: 3px 4px 3px 3px; }
+.chip.fact b {
+  width: auto; height: auto;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: var(--gold);
+}
+.chip.fact.model { border-style: dashed; }
 
 button {
   font: inherit;

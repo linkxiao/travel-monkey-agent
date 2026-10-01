@@ -320,7 +320,8 @@
 |---|---|---|---|
 | 1 | 住宿一等公民：片区对齐 stay；旅居电梯/一层/坐便、带队集合点/停车、探秘走完再住，按人格进 tips；**连续**同片区连住注记（跳镇不误标） | `server/viz.mjs`（`stayFitTip`/`markStayNights`） | ✓ 已做＋已打磨 |
 | 2 | 预算信封：整程晚数×三档中间价，`trip.budget`，**模具住宿栏末尾渲染可见**，FILL 不用填 | `server/viz.mjs`（`ensureBudget`）＋模具 `renderHotels` | ✓ 已做＋已打磨 |
-| 3 | 行程版本：每次成功出页留版（内存近 10 版，`localStorage` 持久近 5 版），工具栏**版本下拉＋回退** | `src/App.tsx`（`versions`/`versionSel`） | ✓ 已做＋已打磨 |
+| 3 | 行程版本：每次成功出页留版（近 10 版，随会话存 IndexedDB），工具栏**版本下拉＋回退** | `src/App.tsx`（`versions`/`versionSel`） | ✓ 已做＋已打磨 |
+| 12 | 会话与约束板（MEMORY M1～M3）：会话存 IndexedDB，刷新接着上次，左栏可新建 / 切换 / 删除行程；本趟硬约束（同行、身体、忌口、日期、天数、出发地、交通、住宿、预算）本机抽取＋改表回复带 `facts`，每轮注入所有模式，左栏可看可删 | `src/lib/session.ts`（新）＋`src/lib/memory.ts`（新）＋`src/lib/trip.ts`（`extractEnvelope` 透出 `facts`）＋`server/skill-prompt.mjs`（`EDIT_SYSTEM`）＋`src/App.tsx`／`styles.css` | ✓ golden 96/96；浏览器实测刷新恢复 |
 | 4 | 线路库 v2：蜀道/甘南/京都/**深圳大鹏/西安城墙**（必看·可砍·耗时·补给），进调研摘要供 FILL 引用（必看不漏、可砍二选一） | `server/routes.json`＋`research.mjs`＋FILL 一句 | ✓ 已做＋已打磨 |
 | 4＋ | 加分轮：线路库 v3（20 条＋代表性/性价比/难度打分），FILL 强引用（代表性≥4 星必看不漏）；`npm run golden` 18 项覆盖 | 同上＋`scripts/golden-test.mjs` | ✓ golden 18/18 |
 | 4＋＋ | 三层重构 v4：L1 高德 POI 用深（地址进摘要，活数据不手写）；L2 模式库 8 条（高原草原/古城步行/海岛亲子/名山徒步/湖环线/石窟人文/都市观光/水乡夜游，地形＋主题命中，**非实测标注**）；L3 只留 2 条薄数据高风险实测线（蜀道抄手铺段/甘南夏河线，来源/更新/置信备查）；防呆 `arr()`（脏数据只降级不断 brief）；`npm run golden` 21 项覆盖 | 同上＋`server/routes.json` v4＋`routeLibraryLine` 导出可测 | ✓ golden 21/21 |

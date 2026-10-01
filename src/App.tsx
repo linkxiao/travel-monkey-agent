@@ -8,6 +8,8 @@ import { fetchResearch, type ResearchBrief } from './lib/research'
 import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
+import { extractFacts, FACT_LABELS, factsBlock, mergeFacts, normalizeModelFacts, removeFact, sortFacts, type Fact } from './lib/memory'
+import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionTitle, type SessionData, type SessionMeta } from './lib/session'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, mentionedDay, photoOutcome, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
 
 const THEME_IDS = ['terracotta', 'matcha', 'ink', 'coast', 'rose', 'slate', 'sand', 'night']
@@ -91,6 +93,13 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier'] }>({})
+  const [facts, setFacts] = useState<Fact[]>([])
+  // 同一轮里先记约束再发请求，state 来不及更新，发请求时读 ref
+  const factsRef = useRef<Fact[]>([])
+  const [sessionId, setSessionId] = useState('')
+  const [sessionList, setSessionList] = useState<SessionMeta[]>([])
+  const [hydrated, setHydrated] = useState(false)
+  const createdRef = useRef(Date.now())
 
   const provider = getProvider(providerId)
   const model = providerId === 'custom' ? (customModel || 'gpt-4o') : modelId
@@ -139,6 +148,132 @@ export default function App() {
       .catch(() => setSkillLabel(''))
   }, [])
 
+  function commitFacts(next: Fact[]) {
+    factsRef.current = next
+    setFacts(next)
+  }
+
+  function learnFacts(incoming: Fact[]) {
+    if (incoming.length) commitFacts(mergeFacts(factsRef.current, incoming))
+  }
+
+  function factsMessages(): ChatMessage[] {
+    const block = factsBlock(factsRef.current)
+    return block ? [{ role: 'user', content: block }, { role: 'assistant', content: '已记下这些约束。' }] : []
+  }
+
+  function rememberSessionId(id: string) {
+    try { localStorage.setItem('ct.session', id) } catch { /* ignore */ }
+  }
+
+  function resetWorkspace(s?: SessionData) {
+    abortRef.current?.abort()
+    setBubbles(s?.bubbles || [])
+    setTrip(s?.trip || null)
+    setHtml(s?.trip && s.html ? s.html : WELCOME_HTML)
+    setPlanDraft(s?.planDraft || '')
+    setPlanningPersona(s?.persona || '')
+    researchRef.current = (s?.research || {}) as typeof researchRef.current
+    commitFacts(s?.facts || [])
+    setVersions(s?.versions || [])
+    setVersionSel(-1)
+    setReport({ errors: [], warnings: [] })
+    setError('')
+    setAttachments([])
+    setInput('')
+    createdRef.current = s?.createdAt || Date.now()
+  }
+
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      const id = loadSetting('ct.session', '')
+      const saved = id ? await loadSession(id).catch(() => null) : null
+      if (!alive) return
+      if (saved) {
+        resetWorkspace(saved)
+        setSessionId(saved.id)
+      } else {
+        const fresh = newSessionId()
+        rememberSessionId(fresh)
+        setSessionId(fresh)
+      }
+      setSessionList(await listSessions().catch(() => []))
+      if (alive) setHydrated(true)
+    })()
+    return () => { alive = false }
+  }, [])
+
+  async function persistNow() {
+    if (!hydrated || !sessionId) return
+    const data: SessionData = {
+      id: sessionId,
+      title: '',
+      createdAt: createdRef.current,
+      updatedAt: Date.now(),
+      bubbles: bubbles.filter((b) => !b.pending).map(({ role, text }) => ({ role, text })),
+      trip,
+      html: trip ? html : '',
+      planDraft,
+      persona: planningPersona,
+      research: researchRef.current,
+      facts: factsRef.current,
+      versions,
+    }
+    if (isEmptySession(data) && !sessionList.some((s) => s.id === sessionId)) return
+    data.title = sessionTitle(data)
+    try {
+      await saveSession(data)
+      setSessionList(await listSessions())
+      // 旧版把版本放在 localStorage，进了会话就不再要它
+      localStorage.removeItem('ct.versions')
+    } catch { /* 存不下就只留在内存里 */ }
+  }
+
+  useEffect(() => {
+    if (!hydrated || !sessionId || busy) return
+    const timer = window.setTimeout(() => void persistNow(), 400)
+    return () => window.clearTimeout(timer)
+  }, [hydrated, sessionId, busy, bubbles, trip, html, planDraft, planningPersona, facts, versions])
+
+  async function newTrip() {
+    if (busy) return
+    await persistNow()
+    const id = newSessionId()
+    resetWorkspace()
+    rememberSessionId(id)
+    setSessionId(id)
+  }
+
+  async function switchTrip(id: string) {
+    if (busy || !id || id === sessionId) return
+    await persistNow()
+    const s = await loadSession(id).catch(() => null)
+    if (!s) {
+      showToast('这趟行程读不出来了')
+      setSessionList(await listSessions().catch(() => []))
+      return
+    }
+    resetWorkspace(s)
+    rememberSessionId(s.id)
+    setSessionId(s.id)
+  }
+
+  async function dropTrip(id: string) {
+    if (busy) return
+    const meta = sessionList.find((s) => s.id === id)
+    if (!window.confirm(`删除「${meta?.title || '这趟行程'}」？对话、页面和版本都会删掉。`)) return
+    // 先换掉当前会话，免得还没触发的自动保存把刚删的又写回去
+    if (id === sessionId) {
+      resetWorkspace()
+      const fresh = newSessionId()
+      rememberSessionId(fresh)
+      setSessionId(fresh)
+    }
+    await removeSession(id).catch(() => {})
+    setSessionList(await listSessions().catch(() => []))
+  }
+
   const previewDoc = useMemo(() => html, [html])
 
   function showToast(msg: string) {
@@ -162,9 +297,7 @@ export default function App() {
       setVersions((prev) => {
         const last = prev[prev.length - 1]
         if (last && JSON.stringify(last.trip) === JSON.stringify(out.trip)) return prev
-        const next = [...prev.slice(-9), entry]
-        try { localStorage.setItem('ct.versions', JSON.stringify(next.slice(-5))) } catch { /* 配额不够就不存 */ }
-        return next
+        return [...prev.slice(-9), entry]
       })
       setVersionSel(-1)
     }
@@ -309,6 +442,7 @@ export default function App() {
     const research = await ensureResearch(text)
     const history: ChatMessage[] = []
     pushResearch(history, research)
+    history.push(...factsMessages())
     if (planDraft) {
       history.push({ role: 'user', content: '当前大纲：\n' + planDraft })
       history.push({ role: 'assistant', content: '已读当前大纲。' })
@@ -336,6 +470,7 @@ export default function App() {
     const research = researchRef.current
     const history: ChatMessage[] = []
     pushResearch(history, research)
+    history.push(...factsMessages())
     history.push({ role: 'user', content: '已确认计划（严格按此填表，不要重排）：\n' + plan })
     history.push({ role: 'assistant', content: '已读确认计划。' })
     history.push({ role: 'user', content: '请按已确认计划输出 trip JSON。' })
@@ -399,8 +534,9 @@ export default function App() {
   }
 
   function recentChat(extra: { role: 'user' | 'assistant'; text: string }[] = [], opts?: { limit?: number; day?: number | null }): ChatMessage[] {
+    const block = factsBlock(factsRef.current)
     const history: ChatMessage[] = [
-      { role: 'user', content: '当前行程摘要：\n' + digestTrip(trip, { day: opts?.day }) },
+      { role: 'user', content: (block ? block + '\n\n' : '') + '当前行程摘要：\n' + digestTrip(trip, { day: opts?.day }) },
       { role: 'assistant', content: '已读摘要。' },
     ]
     const limit = opts?.limit ?? 4
@@ -435,7 +571,7 @@ export default function App() {
     ].filter(Boolean).join('\n')
     const history = trip
       ? recentChat([{ role: 'user', text: ask }], { limit: 4, day: mentionedDay(text) })
-      : [{ role: 'user' as const, content: ask }]
+      : [...factsMessages(), { role: 'user' as const, content: ask }]
     const { acc, signal } = await streamTo(history, 'look', '正在看图…', true, urls)
     if (signal.aborted) return
     if (!acc.trim()) throw new Error('模型没有返回内容')
@@ -510,6 +646,7 @@ export default function App() {
       }
       throw new Error(acc.trim() ? '模型没有按补丁格式回答，行程未改。' : '模型没有返回内容')
     }
+    learnFacts(normalizeModelFacts(env.facts))
     const rewritten = applyReplaceDays(trip, env.replaceDays || [])
     const patched = applyChanges(rewritten.trip, env.changes)
     let nextTrip = patched.trip
@@ -719,6 +856,7 @@ export default function App() {
     setError('')
     setInput('')
     setBusy(true)
+    learnFacts(extractFacts(text))
     if (trip && restyleOnly) {
       setBubbles((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '正在换皮…', pending: true }])
       try {
@@ -804,6 +942,26 @@ export default function App() {
           <p>先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天。系统会给您输出行程大纲，你点击「确认生成」后系统才会生成具体的行程页（此时才消耗token）。</p>
           {skillLabel && <p className="skill-ok">{skillLabel}</p>}
         </header>
+
+        <div className="session-bar">
+          <select
+            value={sessionId}
+            disabled={busy || !hydrated}
+            onChange={(e) => void switchTrip(e.target.value)}
+            title="历史行程：刷新页面也会接着上次"
+          >
+            {!sessionList.some((s) => s.id === sessionId) && <option value={sessionId}>新行程（还没开始）</option>}
+            {sessionList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title} · {new Date(s.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{s.stage === 'plan' ? ' · 大纲' : ''}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="ghost" disabled={busy || !hydrated} onClick={() => void newTrip()}>新建行程</button>
+          {sessionList.some((s) => s.id === sessionId) && (
+            <button type="button" className="ghost" disabled={busy} onClick={() => void dropTrip(sessionId)}>删除</button>
+          )}
+        </div>
 
         <section className="controls">
           <label>
@@ -893,6 +1051,28 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {facts.length > 0 && (
+          <div className="plan-ask facts-board">
+            <div className="plan-ask-k">本趟记住的约束 · 每轮都带给模型，记错了点 × 删掉</div>
+            <div className="chips">
+              {sortFacts(facts).map((f) => (
+                <span className={`chip fact ${f.source}`} key={`${f.key}-${f.value}`} title={f.source === 'model' ? '模型从你的话里记下的' : '从你的原话里记下的'}>
+                  <b>{FACT_LABELS[f.key]}</b>
+                  <span className="chip-name">{f.value}</span>
+                  <button
+                    type="button"
+                    aria-label={`删掉约束 ${f.value}`}
+                    disabled={busy}
+                    onClick={() => commitFacts(removeFact(factsRef.current, f))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && <div className="err">{error}</div>}
         {report.errors.length > 0 && (

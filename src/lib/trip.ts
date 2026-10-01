@@ -27,6 +27,7 @@ export type Envelope = {
   reply: string
   changes: SlotChange[]
   replaceDays: DayRewrite[]
+  facts?: unknown[]
 }
 
 type Day = { date?: string; slots?: Array<Record<string, unknown>>; dining?: Array<Record<string, unknown>>; [key: string]: unknown }
@@ -88,6 +89,7 @@ export function extractEnvelope(text: string): Envelope | null {
     replaceDays?: unknown
     rewrites?: unknown
     title?: unknown
+    facts?: unknown
   } | null
   const replaceDays = asRewrites(obj?.replaceDays || obj?.rewrites)
   if (obj && Array.isArray(obj.days) && obj.title && !obj.changes && !obj.edits && !replaceDays.length) return null
@@ -97,6 +99,7 @@ export function extractEnvelope(text: string): Envelope | null {
       reply: String(obj.reply || obj.message || '').trim(),
       changes: raw.filter((it) => it && typeof it === 'object') as SlotChange[],
       replaceDays,
+      facts: Array.isArray(obj.facts) ? obj.facts : [],
     }
   }
   const trimmed = text.replace(/```[\s\S]*?```/g, '').trim()

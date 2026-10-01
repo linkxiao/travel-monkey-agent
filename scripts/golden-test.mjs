@@ -10,6 +10,8 @@ import { mentionedDays } from '../src/lib/target.ts'
 import zlib from 'node:zlib'
 import { wantsVision } from '../src/lib/attach.ts'
 import { readZip } from '../src/lib/zip.ts'
+import { extractFacts, factsBlock, mergeFacts, normalizeModelFacts, removeFact } from '../src/lib/memory.ts'
+import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
 import { enrichTripTransport } from '../server/transport.mjs'
@@ -378,6 +380,57 @@ const dayWith = (stay) => ({
 
   const many = makeZip(Array.from({ length: 8 }, (_, i) => ({ name: `f${i}.txt`, text: `x${i}`, method: 0 })))
   ok('maxEntries 封顶', (await readZip(asFile('多.zip', many), { maxEntries: 3 })).length === 3)
+}
+
+{
+  const has = (facts, key, value) => facts.some((f) => f.key === key && f.value === value)
+
+  const t1 = extractFacts('我膝盖不好、不吃辣，6个人去西安，国庆5天4晚，从深圳出发，没车')
+  ok('约束：身体/忌口/人数一次抽齐', has(t1, 'body', '膝盖不好') && has(t1, 'diet', '不吃辣') && has(t1, 'party', '6人'))
+  ok('约束：日期/天数/出发地/交通', has(t1, 'dates', '国庆') && has(t1, 'length', '5天4晚') && has(t1, 'origin', '从深圳出发') && has(t1, 'transport', '没车'))
+
+  const t2 = extractFacts('一家三口带老人，海鲜过敏，酒店要有电梯，人均3000元')
+  ok('约束：家庭构成/过敏/住宿/人均', has(t2, 'party', '一家三口') && has(t2, 'party', '带老人') && has(t2, 'diet', '海鲜过敏') && has(t2, 'stay', '电梯') && has(t2, 'budget', '人均3000元'))
+
+  ok('约束：问句不当约束', extractFacts('酒店有电梯吗？要不要自驾？').length === 0)
+  ok('约束：第N天/前两天不当天数', !extractFacts('第3天改轻松点，前两天别太赶').some((f) => f.key === 'length'))
+  ok('约束：日期区间', has(extractFacts('10月3日到10月8日去'), 'dates', '10月3日—10月8日'))
+  ok('约束：改行程的话不误抽', extractFacts('D2第2格改成翠华山').length === 0)
+
+  // 验收：第 1 轮说的三条，第 3 轮改天数后还在
+  let board = mergeFacts([], extractFacts('膝盖不好、不吃辣、6 个人，去成都'))
+  board = mergeFacts(board, extractFacts('偏人文和美食'))
+  board = mergeFacts(board, extractFacts('改成4天3晚'))
+  const block = factsBlock(board)
+  ok('验收：三轮后硬约束全在注入块里', /膝盖不好/.test(block) && /不吃辣/.test(block) && /6人/.test(block) && /4天3晚/.test(block))
+
+  board = mergeFacts(board, extractFacts('改成5天'))
+  ok('天数单值：新的顶掉旧的', board.filter((f) => f.key === 'length').length === 1 && has(board, 'length', '5天'))
+  board = mergeFacts(board, extractFacts('又加了两个朋友，8个人'))
+  ok('人数单值：8人顶掉6人', board.filter((f) => f.key === 'party').map((f) => f.value).join() === '8人')
+  ok('人数换新时带老人之类并存', mergeFacts(extractFacts('带老人，6个人'), extractFacts('8个人')).map((f) => f.value).sort().join() === '8人,带老人')
+  board = mergeFacts(board, extractFacts('不吃辣'))
+  ok('同一条不重复记', board.filter((f) => f.key === 'diet').length === 1)
+  ok('删掉一条后注入块里没了', !/不吃辣/.test(factsBlock(removeFact(board, { key: 'diet', value: '不吃辣' }))))
+  ok('没约束时不注入', factsBlock([]) === '')
+  ok('注入块按类别分行', /^- 同行：8人$/m.test(factsBlock(board)) && /^- 忌口：不吃辣$/m.test(factsBlock(board)))
+
+  const mf = normalizeModelFacts([{ k: '忌口', v: '不吃香菜' }, { key: 'body', value: '晕车' }, { k: '心情', v: '开心' }, 'x', { k: '同行', v: '' }])
+  ok('模型 facts：认中英文键、丢未知类别和空值', mf.length === 2 && has(mf, 'diet', '不吃香菜') && has(mf, 'body', '晕车') && mf.every((f) => f.source === 'model'))
+  const env = extractEnvelope('{"reply":"好","changes":[],"facts":[{"k":"预算","v":"预算5000"}]}')
+  ok('改表回复带出 facts', env && env.facts.length === 1 && normalizeModelFacts(env.facts)[0].key === 'budget')
+
+  const big = mergeFacts([], Array.from({ length: 20 }, (_, i) => ({ key: 'stay', value: `要求${i}号`, source: 'user', at: i })))
+  ok('约束板封顶 12 条', big.length === 12 && big[11].value === '要求19号')
+
+  const empty = { trip: null, planDraft: '', bubbles: [], facts: [] }
+  ok('会话：空会话不存', isEmptySession(empty) && sessionStage(empty) === 'empty')
+  ok('会话：只有约束也算有内容', !isEmptySession({ ...empty, facts: t1 }))
+  ok('会话：有大纲是 plan，有行程是 page', sessionStage({ ...empty, planDraft: 'D1…' }) === 'plan' && sessionStage({ ...empty, trip: { title: '西安' } }) === 'page')
+  ok('会话标题：优先行程名，其次第一句用户话', sessionTitle({ trip: { title: '西安六日' }, bubbles: [] }) === '西安六日'
+    && sessionTitle({ trip: null, bubbles: [{ role: 'assistant', text: '你好' }, { role: 'user', text: '成都  4天\n两人' }] }) === '成都 4天 两人'
+    && sessionTitle({ trip: null, bubbles: [] }) === '新行程')
+  ok('会话 id 不撞', newSessionId() !== newSessionId())
 }
 
 console.log(`\nGOLDEN ALL PASS (${n})`)
