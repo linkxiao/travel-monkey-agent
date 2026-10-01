@@ -220,6 +220,7 @@
 |---|---|
 | `docs/EVAL.md` | 怎么打分、当前快照 |
 | `docs/CAPABILITY.md` | 本文：改动与能力地图 |
+| `docs/MEMORY.md` | 上下文、记忆、多轮会话的评测标准、快照与待办（M1～M8） |
 | `.cursor/skills/changting-eval/SKILL.md` | 复评步骤 |
 | `server/skill-prompt.mjs` | 四模式 Prompt |
 | `src/lib/trip.ts` | 意图与本地落表 |

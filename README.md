@@ -46,4 +46,4 @@ npm run dev
 
 ## 评测与能力沉淀
 
-尺子和当前得分见 [docs/EVAL.md](docs/EVAL.md)。改动脉络、Prompt/Skill/本机工具/第三方能力，以及它们分别服务体验、意图、对话持续、长期沉淀，见 [docs/CAPABILITY.md](docs/CAPABILITY.md)。复评用 Skill [changting-eval](.cursor/skills/changting-eval/SKILL.md)。
+尺子和当前得分见 [docs/EVAL.md](docs/EVAL.md)；上下文、记忆与多轮会话的专项标准和待办见 [docs/MEMORY.md](docs/MEMORY.md)。改动脉络、Prompt/Skill/本机工具/第三方能力，以及它们分别服务体验、意图、对话持续、长期沉淀，见 [docs/CAPABILITY.md](docs/CAPABILITY.md)。复评用 Skill [changting-eval](.cursor/skills/changting-eval/SKILL.md)。
