@@ -8,7 +8,8 @@ import { fetchResearch, type ResearchBrief } from './lib/research'
 import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
-import { extractFacts, FACT_LABELS, factsBlock, mergeFacts, normalizeModelFacts, removeFact, sortFacts, type Fact } from './lib/memory'
+import { buildChatMessages, buildFillMessages, buildPlanMessages, factsPair } from './lib/context'
+import { avoidHits, FACT_LABELS, learnFromModel, learnFromUser, modelDrops, namesHitAvoid, normalizeModelFacts, planAvoidHits, removeFact, sortFacts, takeMemo, type Fact, type MemoUpdate } from './lib/memory'
 import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionTitle, type SessionData, type SessionMeta } from './lib/session'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, mentionedDay, photoOutcome, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
 
@@ -153,13 +154,12 @@ export default function App() {
     setFacts(next)
   }
 
-  function learnFacts(incoming: Fact[]) {
-    if (incoming.length) commitFacts(mergeFacts(factsRef.current, incoming))
+  function learnUser(text: string) {
+    commitFacts(learnFromUser(factsRef.current, text))
   }
 
-  function factsMessages(): ChatMessage[] {
-    const block = factsBlock(factsRef.current)
-    return block ? [{ role: 'user', content: block }, { role: 'assistant', content: '已记下这些约束。' }] : []
+  function learnModel(update: MemoUpdate) {
+    if (update.facts.length || update.drops.length) commitFacts(learnFromModel(factsRef.current, update))
   }
 
   function rememberSessionId(id: string) {
@@ -378,15 +378,6 @@ export default function App() {
     return researchRef.current
   }
 
-  function pushResearch(history: ChatMessage[], research: { brief?: string }) {
-    if (!research.brief) return
-    history.push({
-      role: 'user',
-      content: '本机调研（高德/搜索短摘要，填表用，勿扩写成长文）：\n' + research.brief,
-    })
-    history.push({ role: 'assistant', content: '已读调研摘要。' })
-  }
-
   async function streamTo(history: ChatMessage[], mode: 'plan' | 'fill' | 'talk' | 'edit' | 'look', pendingText: string, live = false, images: string[] = []) {
     abortRef.current?.abort()
     const ac = new AbortController()
@@ -407,7 +398,7 @@ export default function App() {
           const next = [...prev]
           const last = next[next.length - 1]
           if (last?.role === 'assistant') {
-            next[next.length - 1] = { role: 'assistant', text: live ? acc : pendingText, pending: true }
+            next[next.length - 1] = { role: 'assistant', text: live ? takeMemo(acc).text : pendingText, pending: true }
           }
           return next
         })
@@ -440,27 +431,41 @@ export default function App() {
       ? `规划人格：${personaLabel(planningPersona)}。按此人格写大纲。\n${text}`
       : text
     const research = await ensureResearch(text)
-    const history: ChatMessage[] = []
-    pushResearch(history, research)
-    history.push(...factsMessages())
-    if (planDraft) {
-      history.push({ role: 'user', content: '当前大纲：\n' + planDraft })
-      history.push({ role: 'assistant', content: '已读当前大纲。' })
-    }
-    history.push({ role: 'user', content: picked })
-    const { acc, signal } = await streamTo(history, 'plan', '正在写按天的大纲…', true)
-    if (signal.aborted) return
+    const history: ChatMessage[] = buildPlanMessages({ brief: research.brief, facts: factsRef.current, bubbles, planDraft, text: picked })
+    const first = await streamTo(history, 'plan', '正在写按天的大纲…', true)
+    if (first.signal.aborted) return
+    let acc = first.acc
     if (!acc.trim()) throw new Error('模型没有返回计划')
-    const nextPlan = acc.trim()
+    let memo = takeMemo(acc)
+    learnModel(memo)
+    // 用户说过不去的点又排进了大纲：打回一次，不让用户自己去挑
+    const hits = planAvoidHits(memo.text, factsRef.current)
+    if (hits.length) {
+      const again = await streamTo([
+        ...history,
+        { role: 'assistant', content: acc },
+        { role: 'user', content: `大纲里又排了用户明确说不去的「${hits.join('、')}」。删掉换成同片区同类的点，其余不变，输出完整大纲。` },
+      ], 'plan', '大纲里有你说不去的点，正在换掉…', true)
+      if (again.signal.aborted) return
+      if (again.acc.trim()) {
+        acc = again.acc
+        memo = takeMemo(acc)
+        learnModel(memo)
+      }
+    }
+    const nextPlan = memo.text
     const found = detectPersona(nextPlan)
     if (found) setPlanningPersona(found)
     setPlanDraft(nextPlan)
-    setPlanAnswers(extractAskItems(acc).map(() => ''))
+    setPlanAnswers(extractAskItems(nextPlan).map(() => ''))
+    const still = planAvoidHits(nextPlan, factsRef.current)
     setBubbles((prev) => {
       const next = [...prev]
       next[next.length - 1] = {
         role: 'assistant',
-        text: acc.trim() + '\n\n下面先点选项或自己写，看完后再点「提交答复」；也可以直接「确认生成」。',
+        text: nextPlan
+          + (still.length ? `\n\n注意：大纲里仍有你说不去的「${still.join('、')}」，出页时会再换一次；也可以直接说换成什么。` : '')
+          + '\n\n下面先点选项或自己写，看完后再点「提交答复」；也可以直接「确认生成」。',
       }
       return next
     })
@@ -468,12 +473,7 @@ export default function App() {
 
   async function runFill(plan: string) {
     const research = researchRef.current
-    const history: ChatMessage[] = []
-    pushResearch(history, research)
-    history.push(...factsMessages())
-    history.push({ role: 'user', content: '已确认计划（严格按此填表，不要重排）：\n' + plan })
-    history.push({ role: 'assistant', content: '已读确认计划。' })
-    history.push({ role: 'user', content: '请按已确认计划输出 trip JSON。' })
+    const history: ChatMessage[] = buildFillMessages({ brief: research.brief, facts: factsRef.current, bubbles, plan })
     let acc = ''
     try {
       const filled = await streamTo(history, 'fill', '正在填写行程表…')
@@ -495,10 +495,11 @@ export default function App() {
       nextTrip.dataSources = research.sources
     }
     let out = await applyTrip(nextTrip)
-    if (out.errors.length && parsed) {
+    const avoided = avoidHits(out.trip, factsRef.current)
+    if ((out.errors.length || avoided.length) && parsed) {
       setBubbles((prev) => {
         const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', text: 'skill 校验未过，正在按 ERROR 修表…', pending: true }
+        next[next.length - 1] = { role: 'assistant', text: out.errors.length ? 'skill 校验未过，正在按 ERROR 修表…' : '表里有你说不去的点，正在换掉…', pending: true }
         return next
       })
       try {
@@ -507,7 +508,11 @@ export default function App() {
           { role: 'assistant' as const, content: acc },
           {
             role: 'user' as const,
-            content: '机械校验未通过。请只输出修正后的完整 trip JSON，不要解释。\nERROR:\n- ' + out.errors.join('\n- '),
+            content: [
+              '机械校验未通过。请只输出修正后的完整 trip JSON，不要解释。',
+              out.errors.length ? 'ERROR:\n- ' + out.errors.join('\n- ') : '',
+              avoided.length ? `用户明确说不去：${avoided.join('、')}。这些点和店必须换成同片区同类的，其余不动。` : '',
+            ].filter(Boolean).join('\n'),
           },
         ]
         const fixedRun = await streamTo(repair, 'fill', '正在修表…')
@@ -526,25 +531,16 @@ export default function App() {
       : out.errors.length
         ? '已出页，但还有两处要你定一下：' + out.errors.slice(0, 2).join('；')
         : (out.fallback ? '这版版式没过检查，已换回陶土宣纸，内容不受影响。' : `已出页。要改某一天，直接说改哪个点；问时间、距离、累不累，我先回答。`)
+    const left = avoidHits(out.trip, factsRef.current)
     setBubbles((prev) => {
       const next = [...prev]
-      next[next.length - 1] = { role: 'assistant', text: note }
+      next[next.length - 1] = { role: 'assistant', text: left.length ? `${note}\n注意：页面里仍有你说不去的「${left.join('、')}」，直接说「D2第3格换成…」我来改。` : note }
       return next
     })
   }
 
   function recentChat(extra: { role: 'user' | 'assistant'; text: string }[] = [], opts?: { limit?: number; day?: number | null }): ChatMessage[] {
-    const block = factsBlock(factsRef.current)
-    const history: ChatMessage[] = [
-      { role: 'user', content: (block ? block + '\n\n' : '') + '当前行程摘要：\n' + digestTrip(trip, { day: opts?.day }) },
-      { role: 'assistant', content: '已读摘要。' },
-    ]
-    const limit = opts?.limit ?? 4
-    bubbles.filter((b) => !b.pending && b.text.trim() && !isBoilerReply(b.text) && !isEditReceipt(b.text)).slice(-limit).forEach((b) => {
-      history.push({ role: b.role, content: stripBoilerReply(b.text) })
-    })
-    extra.forEach((b) => history.push({ role: b.role, content: b.text }))
-    return history
+    return buildChatMessages({ facts: factsRef.current, digest: digestTrip(trip, { day: opts?.day }), bubbles, extra, limit: opts?.limit })
   }
 
   function finishBubble(text: string) {
@@ -559,7 +555,9 @@ export default function App() {
     const { acc, signal } = await streamTo(recentChat([{ role: 'user', text }], { limit: 4, day: mentionedDay(text) }), 'talk', '正在对照行程…', true)
     if (signal.aborted) return
     if (!acc.trim()) throw new Error('模型没有返回内容')
-    finishBubble(stripBoilerReply(acc) || acc.trim())
+    const memo = takeMemo(acc)
+    learnModel(memo)
+    finishBubble(stripBoilerReply(memo.text) || memo.text)
   }
 
   // 让模型看图说话：这一轮只出文字，右边页面一个字都不动
@@ -571,7 +569,7 @@ export default function App() {
     ].filter(Boolean).join('\n')
     const history = trip
       ? recentChat([{ role: 'user', text: ask }], { limit: 4, day: mentionedDay(text) })
-      : [...factsMessages(), { role: 'user' as const, content: ask }]
+      : [...factsPair(factsRef.current), { role: 'user' as const, content: ask }]
     const { acc, signal } = await streamTo(history, 'look', '正在看图…', true, urls)
     if (signal.aborted) return
     if (!acc.trim()) throw new Error('模型没有返回内容')
@@ -599,11 +597,13 @@ export default function App() {
     })
     // 验货：新名必须在渲染后的 HTML 里找得到，否则"进了表没上页"，不许说已写入
     const unseen = findUnseenInHtml(touched, out.html)
+    const avoided = namesHitAvoid(touched, factsRef.current)
     finishBubble([
       stripBoilerReply(reply),
       '已写入页面：' + applied.join('；'),
       failed.length ? '未改成：' + failed.join('；') : '',
       unseen.length ? `页面上没找到「${unseen.join('、')}」（补丁已进表，疑似模具没渲染该字段，请截图告诉我）` : '',
+      avoided.length ? `注意：「${avoided.join('、')}」是你说过不去的；要恢复就说「还是去${avoided[0]}」。` : '',
       namesChanged ? '点名变了，本机正在按新名字补图。' : '',
       out.errors.length ? '校验：' + out.errors.slice(0, 2).join('；') : '',
     ].filter(Boolean).join('\n'))
@@ -646,7 +646,7 @@ export default function App() {
       }
       throw new Error(acc.trim() ? '模型没有按补丁格式回答，行程未改。' : '模型没有返回内容')
     }
-    learnFacts(normalizeModelFacts(env.facts))
+    learnModel({ facts: normalizeModelFacts(env.facts), drops: modelDrops(env.facts) })
     const rewritten = applyReplaceDays(trip, env.replaceDays || [])
     const patched = applyChanges(rewritten.trip, env.changes)
     let nextTrip = patched.trip
@@ -856,7 +856,8 @@ export default function App() {
     setError('')
     setInput('')
     setBusy(true)
-    learnFacts(extractFacts(text))
+    // 附件里的备注（「忌口：不吃辣」）也算用户说的；整份攻略只看开头，免得把别人的行程当约束
+    learnUser([text, ...docs.map((d) => (d.kind === 'text' ? d.text.slice(0, 3000) : ''))].filter(Boolean).join('\n'))
     if (trip && restyleOnly) {
       setBubbles((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '正在换皮…', pending: true }])
       try {

@@ -10,7 +10,8 @@ import { mentionedDays } from '../src/lib/target.ts'
 import zlib from 'node:zlib'
 import { wantsVision } from '../src/lib/attach.ts'
 import { readZip } from '../src/lib/zip.ts'
-import { extractFacts, factsBlock, mergeFacts, normalizeModelFacts, removeFact } from '../src/lib/memory.ts'
+import { avoidHits, extractFacts, factsBlock, learnFromModel, learnFromUser, mergeFacts, modelDrops, normalizeModelFacts, planAvoidHits, removeFact, takeMemo } from '../src/lib/memory.ts'
+import { buildChatMessages, buildPlanMessages, splitWindow, userPack } from '../src/lib/context.ts'
 import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
@@ -421,7 +422,7 @@ const dayWith = (stay) => ({
   ok('改表回复带出 facts', env && env.facts.length === 1 && normalizeModelFacts(env.facts)[0].key === 'budget')
 
   const big = mergeFacts([], Array.from({ length: 20 }, (_, i) => ({ key: 'stay', value: `要求${i}号`, source: 'user', at: i })))
-  ok('约束板封顶 12 条', big.length === 12 && big[11].value === '要求19号')
+  ok('约束板封顶 16 条', big.length === 16 && big[15].value === '要求19号')
 
   const empty = { trip: null, planDraft: '', bubbles: [], facts: [] }
   ok('会话：空会话不存', isEmptySession(empty) && sessionStage(empty) === 'empty')
@@ -431,6 +432,87 @@ const dayWith = (stay) => ({
     && sessionTitle({ trip: null, bubbles: [{ role: 'assistant', text: '你好' }, { role: 'user', text: '成都  4天\n两人' }] }) === '成都 4天 两人'
     && sessionTitle({ trip: null, bubbles: [] }) === '新行程')
   ok('会话 id 不撞', newSessionId() !== newSessionId())
+}
+
+// 多轮脚本：模拟 App 的一轮（先记约束，再拼消息），逐轮核对发给模型的内容
+{
+  const has = (facts, key, value) => facts.some((f) => f.key === key && f.value === value)
+  const flat = (msgs) => msgs.map((m) => m.content).join('\n')
+  const session = () => ({ facts: [], bubbles: [] })
+  const say = (s, text, reply = '好的。') => {
+    s.facts = learnFromUser(s.facts, text)
+    s.bubbles.push({ role: 'user', text }, { role: 'assistant', text: reply })
+  }
+  const planMsgs = (s, text) => buildPlanMessages({ brief: '', facts: learnFromUser(s.facts, text), bubbles: s.bubbles, planDraft: 'D1 成都 宽窄巷子', text })
+  const chatMsgs = (s, text, limit = 4) => buildChatMessages({ facts: s.facts, digest: '（摘要）', bubbles: s.bubbles, extra: [{ role: 'user', text }], limit })
+
+  // 场景 1：软偏好不在约束板里，靠用户原话带到后面
+  const s1 = session()
+  say(s1, '膝盖不好、不吃辣、6 个人，去成都', 'D1 成都 …')
+  say(s1, '偏人文和美食，想拍一次日出', 'D1 成都 …')
+  const p1 = flat(planMsgs(s1, '改成4天3晚'))
+  ok('多轮：第3轮出大纲带着硬约束', /膝盖不好/.test(p1) && /不吃辣/.test(p1) && /6人/.test(p1) && /4天3晚/.test(p1))
+  ok('多轮：第3轮出大纲带着软偏好原话', /偏人文和美食，想拍一次日出/.test(p1))
+  ok('多轮：本句不在「之前说过的话」里重复', (p1.match(/改成4天3晚/g) || []).length === 1)
+
+  // 场景 2：否决清单
+  const s2 = session()
+  say(s2, '成都3天，不去熊猫基地，人太多')
+  ok('否决：记下不去', has(s2.facts, 'avoid', '熊猫基地') && /- 不去：熊猫基地（不要再排进行程）/.test(factsBlock(s2.facts)))
+  const tripWith = (name) => ({ days: [{ slots: [{ name: '宽窄巷子' }, { name }], dining: [{ place: '陈麻婆豆腐' }] }] })
+  ok('否决：出页后本机查得到又排进来的点', avoidHits(tripWith('成都大熊猫繁育研究基地'), s2.facts).join() === '熊猫基地'
+    && avoidHits(tripWith('武侯祠'), s2.facts).length === 0)
+  ok('否决：大纲按天行里出现才算，复述「不去」不算', planAvoidHits('D1 成都：熊猫基地 / 锦里', s2.facts).length === 1
+    && planAvoidHits('D1 成都：宽窄巷子 / 成都大熊猫繁育研究基地 / 锦里', s2.facts).length === 1
+    && planAvoidHits('D1 成都：宽窄巷子 / 锦里 / 住春熙路一带', s2.facts).length === 0
+    && planAvoidHits('已按你说的不去熊猫基地\nD1 成都：武侯祠 / 锦里', s2.facts).length === 0)
+  say(s2, '还是去熊猫基地吧，孩子想看')
+  ok('否决：改口「还是去」就撤掉', !s2.facts.some((f) => f.key === 'avoid'))
+  say(s2, '一定要去都江堰')
+  say(s2, '算了，都江堰不去了，去掉都江堰')
+  ok('必去与不去互斥：后说的赢', has(s2.facts, 'avoid', '都江堰') && !has(s2.facts, 'must', '都江堰'))
+  ok('否决：「去掉午休」「删掉D2第3格」「不想去太远的地方」不当地点',
+    extractFacts('去掉午休，删掉D2第3格，不想去太远的地方').filter((f) => f.key === 'avoid').length === 0)
+
+  // 场景 3：改口撤约束
+  const s3 = session()
+  say(s3, '带老人，6个人，不吃辣，酒店要电梯')
+  say(s3, '其实能吃辣了')
+  ok('改口：能吃辣了 → 撤掉不吃辣', !s3.facts.some((f) => f.key === 'diet'))
+  say(s3, '老人不去了')
+  ok('改口：老人不去了 → 撤掉带老人，人数保留', !has(s3.facts, 'party', '带老人') && has(s3.facts, 'party', '6人'))
+  say(s3, '不带老人，也不需要电梯')
+  ok('改口：「不带老人」「不需要电梯」不会反被记成约束', !has(s3.facts, 'party', '带老人') && !s3.facts.some((f) => f.key === 'stay'))
+  ok('改口：「不能吃辣」不是改口', learnFromUser(learnFromUser([], '不吃辣'), '我不能吃辣').some((f) => f.key === 'diet'))
+
+  // 场景 4：模型补抽（出大纲 / 聊天回复末尾的「记下：」行）
+  const memo = takeMemo('D1 成都：武侯祠 / 锦里\n待确认：…\n记下：忌口=不吃香菜；不去=春熙路；作废=同行:带老人')
+  ok('记下行：从显示里去掉', !/记下/.test(memo.text) && /D1 成都/.test(memo.text))
+  ok('记下行：新约束与作废都认', has(memo.facts, 'diet', '不吃香菜') && has(memo.facts, 'avoid', '春熙路') && memo.drops.length === 1 && memo.drops[0].key === 'party')
+  ok('记下行：作废生效', !has(learnFromModel(learnFromUser([], '带老人'), memo), 'party', '带老人'))
+  ok('改表 facts 支持 drop', modelDrops([{ k: '忌口', v: '不吃辣', drop: true }, { k: '忌口', v: '不吃香菜' }]).length === 1)
+
+  // 场景 5：附件里的备注、点选答复
+  ok('附件备注也抽', has(learnFromUser([], '看看这个\n附件内容：忌口：不吃辣，从深圳出发'), 'diet', '不吃辣'))
+  const answered = '对以下问题的答复（按选项写入，不要再追问同一批）：\n1. 要不要去掉锦里，换成文殊院\n→ 保留锦里\n2. 住宿要连住吗\n→ A.连住'
+  const fromAns = learnFromUser(learnFromUser([], '不去锦里'), answered)
+  ok('点选答复：只看用户选的，不被模型问句带偏', !has(fromAns, 'avoid', '锦里') && has(fromAns, 'stay', '连住'))
+  ok('点选答复：原话包里只留选项', userPack([{ role: 'user', text: answered }]).join() === '点选：保留锦里；A.连住')
+
+  // 场景 6：出页后长对话，窗口外有本机摘要，长度不随轮数涨
+  const s6 = session()
+  say(s6, '晚饭想吃那家陈麻婆豆腐总店')
+  s6.bubbles.push({ role: 'user', text: 'D2第2格改成文殊院' }, { role: 'assistant', text: '已写入页面：D2 第2格 → 文殊院' })
+  for (let i = 0; i < 10; i++) say(s6, `第${i + 1}个随便问问：这里远不远`, '不远，步行十分钟。')
+  const c10 = flat(chatMsgs(s6, '我前面说的那家店几点开门'))
+  ok('滚动摘要：第13轮还记得最早那家店', /更早的对话/.test(c10) && /陈麻婆豆腐总店/.test(c10))
+  ok('滚动摘要：带上已落到页面的改动', /已改：D2 第2格 → 文殊院/.test(c10))
+  for (let i = 0; i < 40; i++) say(s6, `再问一句第${i}次：这里远不远呀`, '不远。')
+  const c50 = flat(chatMsgs(s6, '还有吗'))
+  ok('滚动摘要：50轮后上下文不线性增长', c50.length < 1400 && c50.length - c10.length < 400)
+  ok('原话包封顶约 600 字', userPack(s6.bubbles).join('').length <= 600)
+  const w = splitWindow(s6.bubbles, 4)
+  ok('窗口切分：窗口+窗口外不重不漏', w.window.length === 4 && w.older.length === s6.bubbles.length - 4)
 }
 
 console.log(`\nGOLDEN ALL PASS (${n})`)
