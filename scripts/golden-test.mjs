@@ -7,7 +7,9 @@ import { researchQuery } from '../server/research.mjs'
 import { resolveTargets } from '../src/lib/target.ts'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, photoOutcome, stripEditClaim, wantsPhotos, wantsTripEdit } from '../src/lib/trip.ts'
 import { mentionedDays } from '../src/lib/target.ts'
+import zlib from 'node:zlib'
 import { wantsVision } from '../src/lib/attach.ts'
+import { readZip } from '../src/lib/zip.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
 import { enrichTripTransport } from '../server/transport.mjs'
@@ -302,6 +304,80 @@ const dayWith = (stay) => ({
   } finally {
     fs.rmSync(new URL(name, dir), { force: true })
   }
+}
+
+// 13. zip 拆包：自己现做一个真压缩包喂进去（stored + deflate 两种都要认）
+{
+  // 按 ZIP 规范手搓一个包：本地头 + 数据 ... + 中央目录 + EOCD
+  const crc = (buf) => {
+    let c = ~0
+    for (const b of buf) {
+      c ^= b
+      for (let k = 0; k < 8; k += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+    }
+    return ~c >>> 0
+  }
+  const makeZip = (files) => {
+    const locals = []
+    const centrals = []
+    let at = 0
+    for (const f of files) {
+      const name = Buffer.from(f.name, 'utf8')
+      const raw = Buffer.from(f.text, 'utf8')
+      const body = f.method === 8 ? zlib.deflateRawSync(raw) : raw
+      const lh = Buffer.alloc(30)
+      lh.writeUInt32LE(0x04034b50, 0)
+      lh.writeUInt16LE(20, 4)
+      lh.writeUInt16LE(f.method, 8)
+      lh.writeUInt32LE(crc(raw), 14)
+      lh.writeUInt32LE(body.length, 18)
+      lh.writeUInt32LE(raw.length, 22)
+      lh.writeUInt16LE(name.length, 26)
+      locals.push(lh, name, body)
+      const cd = Buffer.alloc(46)
+      cd.writeUInt32LE(0x02014b50, 0)
+      cd.writeUInt16LE(20, 6)
+      cd.writeUInt16LE(f.method, 10)
+      cd.writeUInt32LE(crc(raw), 16)
+      cd.writeUInt32LE(body.length, 20)
+      cd.writeUInt32LE(raw.length, 24)
+      cd.writeUInt16LE(name.length, 28)
+      cd.writeUInt32LE(at, 42)
+      centrals.push(cd, name)
+      at += lh.length + name.length + body.length
+    }
+    const localBuf = Buffer.concat(locals)
+    const cdBuf = Buffer.concat(centrals)
+    const eocd = Buffer.alloc(22)
+    eocd.writeUInt32LE(0x06054b50, 0)
+    eocd.writeUInt16LE(files.length, 8)
+    eocd.writeUInt16LE(files.length, 10)
+    eocd.writeUInt32LE(cdBuf.length, 12)
+    eocd.writeUInt32LE(localBuf.length, 16)
+    return Buffer.concat([localBuf, cdBuf, eocd])
+  }
+  const asFile = (name, buf) => ({ name, size: buf.length, arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length) })
+
+  const zip = makeZip([
+    { name: '行程.md', text: '# 西安六天\nD1 兵马俑', method: 8 },
+    { name: '备注.txt', text: '忌口：不吃辣', method: 0 },
+    { name: '__MACOSX/._行程.md', text: 'junk', method: 0 },
+    { name: '.DS_Store', text: 'junk', method: 0 },
+    { name: 'docs/', text: '', method: 0 },
+  ])
+  const got = await readZip(asFile('资料.zip', zip))
+  ok('zip 认 deflate 压缩的条目', got.find((e) => e.name === '行程.md')
+    && new TextDecoder().decode(got.find((e) => e.name === '行程.md').bytes) === '# 西安六天\nD1 兵马俑')
+  ok('zip 认未压缩(stored)的条目', got.find((e) => e.name === '备注.txt')
+    && new TextDecoder().decode(got.find((e) => e.name === '备注.txt').bytes) === '忌口：不吃辣')
+  ok('zip 跳过 __MACOSX/隐藏项/目录项', got.length === 2)
+  ok('zip 条目名按 UTF-8 解', got.every((e) => /^(行程\.md|备注\.txt)$/.test(e.name)))
+
+  await assert.rejects(() => readZip(asFile('坏.zip', Buffer.from('not a zip at all'))), /不像个 zip/)
+  ok('残包/非 zip 明确报错不假装收下', true)
+
+  const many = makeZip(Array.from({ length: 8 }, (_, i) => ({ name: `f${i}.txt`, text: `x${i}`, method: 0 })))
+  ok('maxEntries 封顶', (await readZip(asFile('多.zip', many), { maxEntries: 3 })).length === 3)
 }
 
 console.log(`\nGOLDEN ALL PASS (${n})`)

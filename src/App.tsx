@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachment, wantsVision, type Attachment } from './lib/attach'
+import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
 import { streamChat, type ChatMessage } from './lib/chat'
 import { copyHtml, exportH5, exportImage, sharePage } from './lib/export'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
@@ -84,7 +84,6 @@ export default function App() {
   const [searchProvider, setSearchProvider] = useState(() => loadSetting('ct.searchPv', 'tavily'))
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragOver, setDragOver] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
   const [planDraft, setPlanDraft] = useState('')
   const [planAnswers, setPlanAnswers] = useState<string[]>([])
   const [planningPersona, setPlanningPersona] = useState('')
@@ -651,12 +650,13 @@ export default function App() {
     const bad: string[] = []
     for (const f of list) {
       try {
-        added.push(await readAttachment(f))
+        // 一个 zip 可能拆出好几条，所以按数组收
+        added.push(...await readAttachments(f))
       } catch (err) {
         bad.push(err instanceof Error ? err.message : String(err))
       }
     }
-    if (added.length) setAttachments((prev) => [...prev, ...added].slice(-6))
+    if (added.length) setAttachments((prev) => [...prev, ...added].slice(-12))
     if (bad.length) showToast(bad[0])
     else if (added.length) showToast(`已收下 ${added.length} 个附件，发送时一并处理`)
   }
@@ -994,7 +994,7 @@ export default function App() {
             <div className="chips">
               {attachments.map((a, i) => (
                 <span className="chip" key={`${a.name}-${i}`}>
-                  {a.kind === 'image' ? <img src={a.url} alt="" /> : <b>TXT</b>}
+                  {a.kind === 'image' ? <img src={a.url} alt="" /> : <b>{((a.name.split('.').pop() || 'TXT').split(/[^\w]/)[0] || 'TXT').slice(0, 4).toUpperCase()}</b>}
                   <span className="chip-name">{a.name}</span>
                   <span className="chip-size">{prettyBytes(a.bytes)}</span>
                   <button
@@ -1011,7 +1011,7 @@ export default function App() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={trip ? '可同时说改哪一天、加哪个点、补哪张图；图可以直接粘贴或拖进来' : planDraft ? '说要改哪一天，或点确认生成' : '先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天'}
+            placeholder={(trip ? '可同时说改哪一天、加哪个点、补哪张图；图片/文本/zip 直接粘贴或拖进来' : planDraft ? '说要改哪一天，或点确认生成' : '先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天（图片/文本/zip 可直接拖进来）') + '\n回车发送，Shift+回车换行'}
             rows={4}
             onPaste={(e) => {
               const files = filesFromPaste(e)
@@ -1020,25 +1020,14 @@ export default function App() {
               void takeFiles(files)
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault()
-                void run(input)
-              }
+              if (e.key !== 'Enter' || e.shiftKey) return
+              // 中文输入法选词时的回车只是上屏；Safari 在 compositionend 之后还会补一个 keyCode 229
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return
+              e.preventDefault()
+              if (!busy) void run(input)
             }}
           />
           <div className="composer-bar">
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept="image/*,.txt,.md,.json,.csv"
-              hidden
-              onChange={(e) => {
-                void takeFiles(Array.from(e.target.files || []))
-                e.target.value = ''
-              }}
-            />
-            <button type="button" className="ghost" title="粘贴、拖拽或点这里加图片/文本附件" onClick={() => fileRef.current?.click()}>＋附件</button>
             <button type="button" className="ghost" onClick={() => void loadSeed()}>载入示例行程</button>
             {canConfirm && (
               <button type="button" className="go" disabled={busy} onClick={() => void confirmPage()}>

@@ -1,9 +1,22 @@
+import { readZip } from './zip.ts'
+
 export type Attachment =
   | { kind: 'image'; name: string; url: string; bytes: number }
   | { kind: 'text'; name: string; text: string; bytes: number }
 
-const TEXT_EXT = /\.(txt|md|markdown|json|csv|log|ya?ml)$/i
+const TEXT_EXT = /\.(txt|md|markdown|json|csv|tsv|log|ya?ml|ini|conf|html?|xml|srt|vtt)$/i
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|avif)$/i
 const MAX_TEXT = 60000
+const MAX_ZIP_TEXT = 200000
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  avif: 'image/avif',
+}
 
 function readAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -20,26 +33,79 @@ function isTextFile(file: File) {
     || TEXT_EXT.test(file.name || '')
 }
 
-// 图片存到本机 travel-assets 下（模具认本地图，也不会被配图管线冲掉）；
-// 文本类直接读成字符串，发给模型当资料。其余类型明确拒收，不假装收下。
-export async function readAttachment(file: File): Promise<Attachment> {
-  if (file.type.startsWith('image/')) {
-    const data = await readAsDataUrl(file)
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: file.name, data }),
-    })
-    const out = await res.json().catch(() => ({ error: `上传失败 ${res.status}` }))
-    if (!res.ok || out.error) throw new Error(out.error || `上传失败 ${res.status}`)
-    return { kind: 'image', name: file.name || '粘贴的图', url: out.url, bytes: out.bytes || file.size }
+function isZipFile(file: File) {
+  return /\.zip$/i.test(file.name || '')
+    || file.type === 'application/zip'
+    || file.type === 'application/x-zip-compressed'
+}
+
+function toDataUrl(bytes: Uint8Array, mime: string) {
+  let s = ''
+  // 一次 btoa 整个大数组会爆栈，分块来
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   }
+  return `data:${mime};base64,${btoa(s)}`
+}
+
+async function upload(name: string, data: string, fallbackBytes: number): Promise<Attachment> {
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, data }),
+  })
+  const out = await res.json().catch(() => ({ error: `上传失败 ${res.status}` }))
+  if (!res.ok || out.error) throw new Error(out.error || `上传失败 ${res.status}`)
+  return { kind: 'image', name: name || '粘贴的图', url: out.url, bytes: out.bytes || fallbackBytes }
+}
+
+// zip 当成「一包资料」：里面的文本读成资料，图片照常存进 travel-assets。
+// 一个压缩包可能产出多条附件，所以统一返回数组。
+async function readZipAttachments(file: File): Promise<Attachment[]> {
+  const entries = await readZip(file, { maxEntries: 20 })
+  if (!entries.length) throw new Error(`「${file.name}」里没有能用的文件（只认文本和图片）。`)
+  const out: Attachment[] = []
+  const skipped: string[] = []
+  const utf8 = new TextDecoder('utf-8', { fatal: false })
+  let textBudget = MAX_ZIP_TEXT
+
+  for (const entry of entries) {
+    const short = entry.name.split('/').pop() || entry.name
+    const ext = (short.split('.').pop() || '').toLowerCase()
+    if (IMAGE_EXT.test(short)) {
+      const mime = MIME_BY_EXT[ext] || 'image/png'
+      out.push(await upload(short, toDataUrl(entry.bytes, mime), entry.bytes.length))
+      continue
+    }
+    if (TEXT_EXT.test(short) && textBudget > 0) {
+      const text = utf8.decode(entry.bytes).slice(0, Math.min(MAX_TEXT, textBudget))
+      if (!text.trim()) continue
+      textBudget -= text.length
+      out.push({ kind: 'text', name: `${file.name} › ${entry.name}`, text, bytes: entry.bytes.length })
+      continue
+    }
+    skipped.push(short)
+  }
+  if (!out.length) {
+    throw new Error(`「${file.name}」里都是用不了的格式（${skipped.slice(0, 3).join('、')}），只认文本和图片。`)
+  }
+  return out
+}
+
+// 图片存到本机 travel-assets 下（模具认本地图，也不会被配图管线冲掉）；
+// 文本类直接读成字符串，发给模型当资料；zip 拆开后按上面两条处理。
+// 其余类型明确拒收，不假装收下。
+export async function readAttachments(file: File): Promise<Attachment[]> {
+  if (file.type.startsWith('image/')) {
+    return [await upload(file.name, await readAsDataUrl(file), file.size)]
+  }
+  if (isZipFile(file)) return readZipAttachments(file)
   if (isTextFile(file)) {
     const text = (await file.text()).slice(0, MAX_TEXT)
     if (!text.trim()) throw new Error(`「${file.name}」是空的`)
-    return { kind: 'text', name: file.name || '附件', text, bytes: file.size }
+    return [{ kind: 'text', name: file.name || '附件', text, bytes: file.size }]
   }
-  throw new Error(`暂时只收图片和文本（txt/md/json/csv），「${file.name || '这个文件'}」用不了`)
+  throw new Error(`暂时只收图片、文本（txt/md/json/csv…）和 zip，「${file.name || '这个文件'}」用不了`)
 }
 
 export function filesFromPaste(e: React.ClipboardEvent): File[] {
