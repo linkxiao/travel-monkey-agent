@@ -1,0 +1,9 @@
+node_modules
+dist
+*.local
+preview-*.png
+.DS_Store
+server/.cache-photo.json
+travel-assets/uploads/*
+!travel-assets/uploads/.gitkeep
+!travel-assets/uploads/fixture.png

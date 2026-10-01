@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" font-family="sans-serif">
+  <defs>
+    <style>
+      .road { fill: none; stroke: #c4a15a; stroke-width: 3; stroke-dasharray: 10 8; }
+      .stop { fill: #f4efe6; stroke: #1c3228; stroke-width: 2; }
+      .now { fill: #1c3228; }
+      .todo { fill: #fff; stroke-dasharray: 5 4; }
+      .t { font-size: 15px; font-weight: 700; fill: #1c1914; }
+      .s { font-size: 12px; fill: #5c4e3d; }
+      .d { font-size: 11px; fill: #8a7a68; }
+      .flag { font-size: 26px; }
+      .cap { font-size: 13px; font-weight: 700; fill: #b4532a; }
+    </style>
+  </defs>
+  <rect width="1200" height="420" fill="#f4efe6"/>
+  <text x="40" y="36" font-size="20" font-weight="900" fill="#1c1914">Travel Monkey roadmap text companion 2026-09-30</text>
+  <text x="40" y="58" font-size="12" fill="#8a7a68">Companion to changting-agent-timeline.png. Light stations landed. Dark station polished this round. Flag next.</text>
+  <path class="road" d="M 40 200 C 200 170, 320 230, 480 200 S 800 170, 1160 200"/>
+  <g>
+    <rect class="stop" x="48" y="120" width="150" height="120" rx="10"/>
+    <text class="t" x="60" y="145">Skill full page</text>
+    <text class="d" x="60" y="163">09-01 to 05</text>
+    <text class="s" x="60" y="183">Edit day like essay</text>
+    <text class="s" x="60" y="201">Costly, layout fragile</text>
+    <text class="s" x="60" y="219">6-slot contract starts</text>
+  </g>
+  <g>
+    <rect class="stop" x="218" y="120" width="150" height="120" rx="10"/>
+    <text class="t" x="230" y="145">Mold rendering</text>
+    <text class="d" x="230" y="163">09-06 to 07</text>
+    <text class="s" x="230" y="183">renderTrip + validate</text>
+    <text class="s" x="230" y="201">Model fills table only</text>
+    <text class="s" x="230" y="219">Stable, shareable</text>
+  </g>
+  <g>
+    <rect class="stop" x="388" y="120" width="150" height="120" rx="10"/>
+    <text class="t" x="400" y="145">True and stable</text>
+    <text class="d" x="400" y="163">09-08 to 12</text>
+    <text class="s" x="400" y="183">Amap research/local skin</text>
+    <text class="s" x="400" y="201">Outline before page</text>
+    <text class="s" x="400" y="219">Empty beats wrong pic</text>
+  </g>
+  <g>
+    <rect class="stop" x="558" y="120" width="150" height="120" rx="10"/>
+    <text class="t" x="570" y="145">Persona + meals</text>
+    <text class="d" x="570" y="163">09-14 to 22</text>
+    <text class="s" x="570" y="183">stay/guide/trek</text>
+    <text class="s" x="570" y="201">Forced dining + craft</text>
+    <text class="s" x="570" y="219">Real hotel names only</text>
+  </g>
+  <g>
+    <rect class="stop now" x="728" y="120" width="180" height="120" rx="10"/>
+    <text class="t" x="740" y="145" fill="#f4efe6">Polish loop, done</text>
+    <text class="d" x="740" y="163" fill="#c4a15a">09-30 polished</text>
+    <text class="s" x="740" y="183" fill="#f4efe6">Stay-first + budget shown</text>
+    <text class="s" x="740" y="201" fill="#f4efe6">Versions kept + route lib v3 (20)</text>
+    <text class="s" x="740" y="219" fill="#f4efe6">Photo cache on disk</text>
+  </g>
+  <g>
+    <rect class="stop todo" x="928" y="120" width="150" height="120" rx="10" stroke="#b4532a"/>
+    <text class="flag" x="985" y="150"></text>
+    <text class="t" x="940" y="172">Next</text>
+    <text class="s" x="940" y="192">Route lib walk-throughs</text>
+    <text class="s" x="940" y="210">Cross-session memory</text>
+    <text class="s" x="940" y="228">Day-of-travel guide</text>
+  </g>
+  <text class="cap" x="40" y="290">This round, scored per dimension:</text>
+  <text class="s" x="40" y="312">Stay access struct + merged zones + budget shown. Dining soft/spicy tags. Versions persisted.</text>
+  <text class="s" x="40" y="332">Route lib v3: 20 scored routes. Intercity driving + per-persona transit. Golden 18 checks.</text>
+  <text class="s" x="40" y="352">Next: checklist after FILL, walk-through calibration, memory, day-of guide.</text>
+</svg>

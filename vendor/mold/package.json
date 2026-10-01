@@ -1,0 +1,5 @@
+{
+  "name": "travel-plan-viz-mold",
+  "private": true,
+  "description": "Vendored travel-plan-viz mold. Kept as CommonJS so render, validate, and map keep working inside the parent ESM app."
+}
