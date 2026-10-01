@@ -1,6 +1,9 @@
 node_modules
 dist
 *.local
+.env
+.env.*
+!.env.example
 preview-*.png
 .DS_Store
 server/.cache-photo.json
