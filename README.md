@@ -22,7 +22,7 @@ npm run dev
 
 ## 目录自包含
 
-运行时不再依赖仓库外的目录。模具（出页、校验、坐标）在 `vendor/mold`，许可见 `vendor/mold/LICENSE`（Copyright 2026 zexuanw958-svg，MIT）。种子行程在 `vendor/mold/scripts/shudao-trip-zhongqiu.json`，种子页在 `seed/shudao-zhongqiu.html`，配图在 `travel-assets/`。用户粘贴的图片写入 `travel-assets/uploads/`，不进版本库。
+运行时不再依赖仓库外的目录。`vendor/mold` 是 travel-plan-viz 的完整副本（出页脚本、校验、坐标、契约、调研/美学/移植说明、样例页、种子 JSON、单测），许可见 `vendor/mold/LICENSE`（Copyright 2026 zexuanw958-svg，MIT）。种子页在 `seed/shudao-zhongqiu.html`，配图在 `travel-assets/xian/`。用户粘贴的图片写入 `travel-assets/uploads/`，不进版本库。
 
 ## 密钥（都只存在本机）
 

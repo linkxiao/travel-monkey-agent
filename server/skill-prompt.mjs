@@ -10,6 +10,8 @@ const SKILL_FILES = [
   { id: 'skill', rel: 'SKILL.md', title: 'SKILL.md' },
   { id: 'contract', rel: 'assets/page-contract.md', title: 'page-contract.md' },
   { id: 'research', rel: 'references/research-guide.md', title: 'research-guide.md' },
+  { id: 'design', rel: 'references/design-guidelines.md', title: 'design-guidelines.md' },
+  { id: 'porting', rel: 'references/porting-to-other-agents.md', title: 'porting-to-other-agents.md' },
 ]
 
 function fileMeta(rel, title, id) {

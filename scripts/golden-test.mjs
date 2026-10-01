@@ -284,7 +284,7 @@ const dayWith = (stay) => ({
   ok('越界/怪路径一律拦下', true)
 
   // 自带一张 1×1 PNG 当样本，不蹭运行时留下的上传文件
-  const dir = new URL('../../travel-assets/uploads/', import.meta.url)
+  const dir = new URL('../travel-assets/uploads/', import.meta.url)
   const name = '__golden-fixture.png'
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(new URL(name, dir), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))

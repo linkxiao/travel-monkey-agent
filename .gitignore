@@ -6,4 +6,3 @@ preview-*.png
 server/.cache-photo.json
 travel-assets/uploads/*
 !travel-assets/uploads/.gitkeep
-!travel-assets/uploads/fixture.png

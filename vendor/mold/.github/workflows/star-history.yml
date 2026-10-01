@@ -1,0 +1,64 @@
+name: Star history snapshot
+
+# GitHub 自 2026-06-30 起将 starred_at 数据限制为仓库管理员/协作者可读，
+# star-history.com 的 README 热链图因此失效（对几乎所有仓库）。
+# 本任务改用本仓库自己的凭证读取 stargazer 数据、自绘手绘风增长图，
+# 强推到单提交分支 `star-history`；本仓库与主页仓库的 README 均引用
+# 该分支的 raw 地址。图表生成失败时不动分支，旧图保持可显示。
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # GITHUB_TOKEN 失去 starred_at 读取权限时，可创建细粒度 PAT
+  # （Starring: read）存为 STARGAZER_TOKEN secret，无需改工作流。
+  GH_TOKEN: ${{ secrets.STARGAZER_TOKEN != '' && secrets.STARGAZER_TOKEN || github.token }}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when star count unchanged
+        id: gate
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY" --jq .stargazers_count)
+          last=none
+          if git fetch origin star-history --depth 1 2>/dev/null; then
+            last=$(git show FETCH_HEAD:.star-count 2>/dev/null || echo none)
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "skip=$([ "$current" = "$last" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch stargazer timestamps
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/stargazers?per_page=100" \
+               -H "Accept: application/vnd.github.star+json" \
+               --jq '.[].starred_at' > /tmp/starred_at.txt; then
+            echo "::error::读取 stargazer 时间数据失败。若 GITHUB_TOKEN 无权限，请创建细粒度 PAT（Starring: read）并存为 STARGAZER_TOKEN secret。"
+            exit 1
+          fi
+          echo "fetched $(wc -l < /tmp/starred_at.txt) timestamps"
+
+      - name: Render chart
+        if: steps.gate.outputs.skip == 'false'
+        run: node .github/scripts/star-history-chart.js /tmp/starred_at.txt /tmp/star-history.svg "$GITHUB_REPOSITORY"
+
+      - name: Publish to star-history branch
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch --orphan star-history
+          cp /tmp/star-history.svg star-history.svg
+          echo '${{ steps.gate.outputs.current }}' > .star-count
+          git add star-history.svg .star-count
+          git commit -m 'chore: star history snapshot (${{ steps.gate.outputs.current }} stars)'
+          git push --force origin star-history

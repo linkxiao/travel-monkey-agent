@@ -27,7 +27,8 @@ export function mentionedDays(text: string): number[] {
   return out.sort((a, b) => a - b)
 }
 
-type Day = NonNullable<Trip['days']>[number]
+// Trip 带索引签名，Trip['days'] 推不出元素类型，照 trip.ts 的写法直接声明
+type Day = { date?: string; slots?: Array<Record<string, unknown>>; dining?: Array<Record<string, unknown>>; [key: string]: unknown }
 
 const ASK_STOP = /^(的|了|吗|呢|请|帮|我|你|一下|这个|那个|为啥|为什么|没有|补充|高清|大图|配图|换图|附图|实拍|照片|图片|行程|当天|格子|还是|或者|修改|每日|每天|景点|内容|对号|入座)$/
 const SCENE = /星空|夜观|夜景|银河|观星|日出|日落|云海|雪景|雾凇|晚霞|花海/
@@ -94,11 +95,14 @@ function leftoverHint(text: string, names: string[]): string {
   return t.length >= 2 ? t : ''
 }
 
+// Trip 带索引签名，days 取出来是 unknown，统一在这里收口
+const daysOf = (trip: Trip | null | undefined): Day[] => ((trip || {}) as { days?: Day[] }).days || []
+
 export function resolveTargets(text: string, trip: Trip | null, opts?: { photoAsk?: boolean }): TripTarget {
   const days = mentionedDays(text)
   const day = days[0] ?? mentionedDay(text)
   const hits: TripHit[] = []
-  ;(trip?.days || []).forEach((d, i) => {
+  ;daysOf(trip).forEach((d, i) => {
     ;(d.slots || []).forEach((slot, j) => {
       const name = String(slot.name || '')
       const score = scoreName(text, name)
@@ -121,7 +125,7 @@ export function resolveTargets(text: string, trip: Trip | null, opts?: { photoAs
     const wanted = days.length ? days : (day ? [day] : [])
     const spotOnly = /景点/.test(String(text || ''))
     for (const dn of wanted) {
-      const d = (trip?.days || [])[dn - 1] as Day | undefined
+      const d = daysOf(trip)[dn - 1]
       if (!d) continue
       const all = (d.slots || []).map((slot, j) => ({ slot, j })).filter(({ slot }) => !spotOnly || slot.kind === 'spot')
       const empty = all.filter(({ slot }) => slot.kind !== 'depart' && !slot.photo && !(Array.isArray(slot.photos) && slot.photos[0]))

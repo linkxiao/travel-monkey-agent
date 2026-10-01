@@ -69,7 +69,7 @@
 | 模块 | 作用 |
 |---|---|
 | `src/lib/trip.ts` | 行程摘要 `digestTrip`；意图：改表/同步/新增/配图/规划条；本地解析 1–6 点、改格、改餐、减负/雨砍/停车、新增点；`applyChanges` / `applyReplaceDays` / `applyAdds` |
-| `src/lib/target.ts` | 点名某一天/某一格：Token 对上格子再改内容或补图，不写个案 |
+| `src/lib/target.ts` | 点名某一天/某一格：Token 对上格子再改内容或补图，不写个案；括号里的通称当别名（「人头上（人头山）顶」认「人头山」） |
 | `src/App.tsx` | PLAN→确认出页→FILL；改表与配图可同一句执行；问答只带最近摘要；每次成功出页留版，工具栏「回到上一版」 |
 | `server/viz.mjs` | 补齐三餐、人格；住宿栏只用真店名+位置（调研三档优先），景点名不当片区、不造「经济参考」凑图；适老/连住/集合点按人格进 tips；`trip.budget` 预算信封 |
 | `server/photos.mjs` | 配图管线：点评→高德→百度→维基；只换点名的格子；检索词景点名在前；换失败保留原图；名点图落盘缓存（`server/.cache-photo.json`，跨重启复用） |
@@ -77,7 +77,10 @@
 | `server/transport.mjs` | 邻点步行/公交耗时；30km 以上城际走驾车（`intercity`）；按人格转公交阈值（旅居 20min/带队 30min/探秘 90min）；`actionLink` 只用官方 `uri.amap.com`（GCJ-02→WGS-84） |
 | `server/craft.mjs` | 日级规划条：负荷 / 雨砍 / 停车再走；FILL 缺则按人格+点名补齐 |
 | `server/themes.mjs` | 本地皮，换皮不走模型 |
-| `server/chat-proxy.mjs` | 按模式挂系统提示；密钥与服务商错配提示 |
+| `server/chat-proxy.mjs` | 按模式挂系统提示（plan/fill/talk/edit/look）；密钥与服务商错配提示；带图这轮把图挂到最后一条用户消息上，上游嫌弃图片时翻成「换个认图的模型」 |
+| `server/images.mjs` | 把本机图读成 base64 发给模型：只认 `travel-assets/` 下的文件（越界路径一律拦）、单图 5MB、一次最多 4 张；OpenAI 用 `image_url`，Anthropic 用 `image.source.base64`，外链原样透传 |
+| `server/uploads.mjs` | 收粘贴/拖入的图：存成 `travel-assets/uploads/<内容hash>.<ext>`，只认 jpg/png/webp/gif/avif，单张 8MB，文件名由哈希定（不吃用户传的路径） |
+| `src/lib/attach.ts` | 附件读取与分流：`wantsVision` 判这一轮是贴图（本机、不花钱）还是看图（送模型、烧 token） |
 | 模具 `gen-shudao-html.js` + `validate` | 固定 6 格栅格、清单、地图 |
 | 导出 | 单文件 H5、长图、系统分享 |
 
@@ -223,7 +226,7 @@
 | `server/craft.mjs` | 日负荷 / 雨砍 / 停车再走 |
 | `server/photos.mjs` / `research.mjs` / `transport.mjs` | 图、调研、路 |
 | `docs/changting-agent-timeline.png` | 第 1 节手绘风进化路线图 |
-| `vendor/mold/` | 出页模具、校验、坐标、种子 JSON（本目录自包含，不再读仓库外的 travel-plan-viz-main） |
+| `vendor/mold/` | travel-plan-viz 完整副本：出页、校验、坐标、契约、调研/美学说明、样例、种子 JSON、单测。不再读仓库外的 travel-plan-viz-main |
 | `travel-assets/` | 种子配图；用户上传在 `uploads/`（不进版本库） |
 
 ---
@@ -323,6 +326,7 @@
 | 5 | 配图/POI 落盘缓存：名点图跨重启复用（单 `fs` import，写盘路径已验证） | `server/photos.mjs`（`server/.cache-photo.json`） | ✓ 已做＋已打磨 |
 | 6 | 下一站（未做）：线路库打分入库、跨会话记住人格/忌口/档位、出发当日陪伴、闭馆/演出时刻核验 | — | ○ 待排 |
 | 10 | 输入框收图片/附件：粘贴（⌘V）、拖拽、「＋附件」三种方式；图片存到 `travel-assets/uploads/<内容hash>.<ext>`（同图重复粘不堆文件），直接贴进你点名的那一格（认「D2第2格」、认点名、认括号里的别名如「人头上（人头山）顶」→「人头山」），说不清就按本机问法列 A/B/C 候选；**用户贴的图只有点名那一格才让换**，按天/按种类的批量补图一律绕开；文本附件（txt/md/json/csv）读成资料拼进给模型的话里。贴图不走模型、不耗 Key | `server/uploads.mjs`（新）＋`vite.config.ts`／`server/prod.mjs` 路由＋`src/lib/attach.ts`（新）＋`src/lib/trip.ts`（`applyPhotoTo`）＋`src/lib/target.ts`（括号别名）＋`server/photos.mjs`（本地图保护）＋`src/App.tsx`／`styles.css`（chips/拖拽） | ✓ golden 57/57 |
+| 11 | 模型看图（视觉）：同一张图，说「D2第2格用这张」就贴进页面（本机、不花钱），说「这是哪／图里写的什么／根据这张图规划」就送模型看（`look` 模式）。本机图读成 base64 内联（上游取不到 127.0.0.1），OpenAI 系用 `image_url`、Anthropic 用 `image.source.base64`。看图这轮只出文字、不动页面。提示词强制分清「看得见的」和「推测的」并写明把握，认不出就说认不出、不许硬凑景点名。选了不认图的型号（如 deepseek）直接拦下并点名可换的模型，不白烧一轮 | `server/images.mjs`（新）＋`server/chat-proxy.mjs`＋`server/skill-prompt.mjs`（`LOOK_SYSTEM`）＋`src/lib/attach.ts`（`wantsVision`）＋`src/lib/chat.ts`＋`src/App.tsx`（`runLook`） | ✓ golden 67/67；mock 上游验过两家报文形状 |
 | 9 | 改表不挑模型脾气（补丁健壮性专轮）：根因是**只认一种补丁形状**——模型把值平铺成 `{day,slot,name}`（不套 `set`）就被判「没有 set」全丢；更常见的是模型只回一句「我已经把…换成…了」不给补丁，本机照实什么都不改，用户看到"模型答了、页面没动"。现在：平铺补丁（含餐、规划条）照收；模型只口头声称改好、或反问、或回纯文本时，用**本机按你原话兜底改**；一个补丁都没落地时**不转述模型那句「已改好」**，只说「这次没有改到页面上」并给出可用句式 | `src/lib/trip.ts`（`liftSet`/`inferEditFrom`/`stripEditClaim`/`findSlot` 反向包含）＋`src/App.tsx`（`runEdit` 兜底、`commitEdit` 不转述假话） | ✓ golden 49/49 |
 | 8 | 改天/换图必见（意图路由专轮）：根因是**配图请求被路由进改表分支**——`wantsPhotos` 不认「图片/照片」，于是「优化day1、day2的景点图片」被当成改表交给模型，而 EDIT 契约明写「问图不要改表」，模型回空补丁 → 页面不动；「图片不对，请更换」更是掉进纯聊天。同轮补齐：多天点名（`mentionedDays`，「第5格」不再误判成第5天）、天范围隔离（只动点名的天，别人的图不冲）、用户显式检索词（引号里的词直接拿去搜）、泛名兜底（「一方小院」带当天地名再搜）、逐格收据（换上/搜不到分别报）；`npm run golden` 41 项覆盖 | `src/lib/trip.ts`（`wantsPhotos`/`wantsTripEdit`/`collectPhotoRequest`/`explicitPhotoQuery`/`photoOutcome`）＋`src/lib/target.ts`（`mentionedDays`/spot-only）＋`server/photos.mjs`（`photoDays`/`photoQuery`/泛名兜底）＋`server/viz.mjs`＋`src/lib/render.ts`＋`src/App.tsx` | ✓ golden 41/41 |
 | 7 | 改天必见（bugfix 专轮）：overview 每次从 days 全量重建（根因：只建不刷，顶部卡片永远旧名）；收据验货（新名不在 HTML 里就降级为失败，不说"已写入"假话）；本地 kind 句式（D1住宿改成X 不走模型）；换图前后 URL 对比（没换成不说已补）；`npm run golden` 27 项覆盖 | `server/viz.mjs`（`normalizeTrip`）＋`src/lib/trip.ts`（`touched`/`findUnseenInHtml`/`collectPhotos`/`kindM`）＋`src/App.tsx`（`commitEdit`/`runPhotos`） | ✓ golden 27/27 |
