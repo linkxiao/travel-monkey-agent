@@ -1,6 +1,6 @@
 # Travel Monkey：改动沉淀与能力地图
 
-本文整理 Travel Monkey（仓库目录 `changting-agent`）从「手写 HTML 攻略」走到「模具出页 + 本机工具」期间的改动，以及这些能力分别服务哪一类产品目标。评测尺子仍以 [EVAL.md](./EVAL.md) 为准；本文不另打分。
+本文整理 Travel Monkey（仓库目录 `travel-monkey-agent`）从「手写 HTML 攻略」走到「模具出页 + 本机工具」期间的改动，以及这些能力分别服务哪一类产品目标。评测尺子仍以 [EVAL.md](./EVAL.md) 为准；本文不另打分。
 
 读法：先看进化路线，再看分层（Prompt / Skill / 脚本工具 / 第三方），再看四类价值。第 7 节是规划专家对本文和产品的评审。**个例店名、某一天的改法不写进通用 Prompt**，写进本机规则或线路库。
 
@@ -12,9 +12,9 @@
 
 ### 1.1 进化路线图（手绘风）
 
-![Travel Monkey 进化路线：Skill 手写整页 → 网页扣 HTML → 接模具 → 又真又稳 → 人格三餐住宿 → 打磨回路](./changting-agent-timeline.png)
+![Travel Monkey 进化路线：Skill 手写整页 → 网页扣 HTML → 接模具 → 又真又稳 → 人格三餐住宿 → 打磨回路](./travel-monkey-agent-timeline.png)
 
-路是一条古道虚线，六站便签从左到右：手写整页 → 网页扣 HTML → 接模具出页 → 又真又稳 → 人格三餐住宿 → **打磨回路**；路尽头小哥路牌写的「你在这里 → 线路库·适老住·版本回退」在本轮已落第一版（线路库 v2、适老/连住/集合点、版本回退持久化，见 §8.1）。另附文字版附图（英文，避免编码问题）：[`changting-agent-timeline-companion.svg`](./changting-agent-timeline-companion.svg)。下一站旗子：**线路库打分入库 · 跨会话记忆 · 当日陪伴**。
+路是一条古道虚线，六站便签从左到右：手写整页 → 网页扣 HTML → 接模具出页 → 又真又稳 → 人格三餐住宿 → **打磨回路**；路尽头小哥路牌写的「你在这里 → 线路库·适老住·版本回退」在本轮已落第一版（线路库 v2、适老/连住/集合点、版本回退持久化，见 §8.1）。另附文字版附图（英文，避免编码问题）：[`travel-monkey-agent-timeline-companion.svg`](./travel-monkey-agent-timeline-companion.svg)。下一站旗子：**线路库打分入库 · 跨会话记忆 · 当日陪伴**。
 
 ### 1.2 时间线
 
@@ -225,7 +225,7 @@
 | `src/lib/trip.ts` | 意图与本地落表 |
 | `server/craft.mjs` | 日负荷 / 雨砍 / 停车再走 |
 | `server/photos.mjs` / `research.mjs` / `transport.mjs` | 图、调研、路 |
-| `docs/changting-agent-timeline.png` | 第 1 节手绘风进化路线图 |
+| `docs/travel-monkey-agent-timeline.png` | 第 1 节手绘风进化路线图 |
 | `vendor/mold/` | travel-plan-viz 完整副本：出页、校验、坐标、契约、调研/美学说明、样例、种子 JSON、单测。不再读仓库外的 travel-plan-viz-main |
 | `travel-assets/` | 种子配图；用户上传在 `uploads/`（不进版本库） |
 

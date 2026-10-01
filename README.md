@@ -11,7 +11,7 @@
 5. **改某一天**：不重规划、不重调研、不换皮。点「换皮」只重渲染。
 
 ```bash
-cd changting-agent
+cd travel-monkey-agent
 npm install
 npm run dev
 ```
