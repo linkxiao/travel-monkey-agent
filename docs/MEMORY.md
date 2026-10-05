@@ -2,7 +2,7 @@
 
 本文是「上下文、记忆、多轮会话」这一维的**源文档**：怎么打分、当前快照、待办和验收口径。总尺子仍是 [EVAL.md](./EVAL.md)，本文是它的专项展开；改分纪律沿用 EVAL「复评纪律」（跨档才改分、证据链、一次只推一维）。
 
-依据是代码，不是体验印象。每次复评对照现码：`src/App.tsx`（会话状态与编排）、`src/lib/trip.ts`（`digestTrip`）、`src/lib/memory.ts`（约束板）、`src/lib/session.ts`（会话存储）、`server/skill-prompt.mjs`（各模式提示词）。
+依据是代码，不是体验印象。每次复评对照现码：`src/App.tsx`（会话状态与编排）、`src/lib/trip.ts`（`digestTrip`）、`src/lib/memory.ts`（约束板）、`src/lib/session.ts`（会话存储）、`src/lib/context.ts`（每轮消息怎么拼）、`server/skill-prompt.mjs`（各模式提示词）。
 
 ---
 
