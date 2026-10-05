@@ -1,6 +1,6 @@
 ---
 name: changting-eval
-description: Re-score Travel Monkey against docs/EVAL.md and refresh the snapshot. Use when the user asks to 复评, 评测, 打分, update EVAL, or evaluate Travel Monkey on 标准化 / 旅行专业性 / 实用性 / 稳定性 / 合理性 / 完善程度 / 用户体验 / 路径 / 景点 / 三餐 / 住宿.
+description: Re-score Travel Monkey against docs/EVAL.md and refresh the snapshot. Use when the user asks to 复评, 评测, 打分, update EVAL, or evaluate Travel Monkey on its six scored dimensions (标准化 / 旅行专业性 / 实用性 / 稳定性 / 用户体验 / 上下文与记忆), the two cross-cutting judgments (合理性 / 完善程度), or the four businesses (路径 / 景点 / 三餐 / 住宿).
 ---
 
 # Travel Monkey 复评
@@ -13,9 +13,10 @@ description: Re-score Travel Monkey against docs/EVAL.md and refresh the snapsho
 
 1. 通读 `docs/EVAL.md`（怎么打分、锚点、上一份快照）。
 2. 对照现码，不要凭记忆：`server/skill-prompt.mjs`、`server/viz.mjs`、`server/transport.mjs`、`server/photos.mjs`、`src/lib/trip.ts`、`src/App.tsx`、模具 `vendor/mold/scripts/gen-shudao-html.js`。
+2b. 上下文与记忆这一维另读 `docs/MEMORY.md`，对照 `src/lib/context.ts`、`src/lib/memory.ts`、`src/lib/session.ts`。
 3. 先定性再给分。每项写清：已立住、缺口、实现粒度、是否合理、完善程度（能凑 / 能标 / 能写 / 能列 / 住得对）。
-4. 必须覆盖：专业五维、合理性、完善程度、三类用户、四项业务（路径、景点、三餐、住宿）。住宿单独打分，不是餐饮附属。
-5. 按 EVAL 算三个均值（四舍五入到 0.1）：工程标准化、用户适配、四项业务。交通默认按已填高德 Key；无 Key 时路径约 3。
+4. 必须覆盖：六个打分维度（EVAL 1.1～1.6，名字照抄 EVAL，不用简称）、两条横切判断（合理性、完善程度，不打分）、三类用户、四项业务（路径、景点、三餐、住宿）。住宿单独打分，不是餐饮附属。
+5. 按 EVAL 算三个均值（四舍五入到 0.1）：六维均值（旧快照叫「工程标准化」，只含前五维）、用户适配、四项业务。交通默认按已填高德 Key；无 Key 时路径约 3。
 6. **先改** `docs/EVAL.md` 的快照（日期、依据、表、一句话、P0 是否仍成立）。
 7. 再改画布 [travel-monkey-agent-eval.canvas.tsx](/Users/linkxiao/.cursor/projects/Users-linkxiao-Desktop-develop-icode/canvases/travel-monkey-agent-eval.canvas.tsx)，与快照数字一致。不要只改画布。
-8. 回复三句：阶段、分数相对上次升降、下一刀仍是哪条 P0。不要另起一套维度。
+8. 回复三句：阶段、分数相对上次升降、下一刀仍是哪条 P0。不要另起一套维度或简称。
