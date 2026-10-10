@@ -41,9 +41,9 @@ export async function renderTripPage(trip: Trip, opts?: {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    throw new Error(`连不上本机渲染接口（${msg}）。请确认开发服务还在跑，然后刷新再试。`)
+    throw new Error(`连不上渲染服务（${msg}）。请确认开发服务还在跑，然后刷新再试。`)
   }
   const data = await res.json()
   if (!res.ok || data.error) throw new Error(data.error || `渲染失败 ${res.status}`)
-  return data as { html: string; trip: Trip; errors: string[]; warnings: string[]; themeId?: string; themeName?: string; fallback?: boolean }
+  return data as { html: string; trip: Trip; errors: string[]; warnings: string[]; quality?: string[]; themeId?: string; themeName?: string; fallback?: boolean }
 }

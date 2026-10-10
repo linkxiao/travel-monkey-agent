@@ -1,5 +1,6 @@
 // 每一轮发给模型的消息怎么拼：纯函数，不碰 React，golden 可以按多轮脚本逐轮核对。
 import { factsBlock, type Fact } from './memory.ts'
+import { profileBlock, type Profile } from './profile.ts'
 import { isBoilerReply, isEditReceipt, stripBoilerReply } from './trip.ts'
 
 export type ContextMessage = { role: 'user' | 'assistant'; content: string }
@@ -70,6 +71,11 @@ export function factsPair(facts: Fact[]): ContextMessage[] {
   return block ? [{ role: 'user', content: block }, { role: 'assistant', content: '已记下这些约束。' }] : []
 }
 
+function profilePair(profile?: Profile): ContextMessage[] {
+  const block = profile ? profileBlock(profile) : ''
+  return block ? [{ role: 'user', content: block }, { role: 'assistant', content: '已记下跨行程画像。' }] : []
+}
+
 function researchPair(brief?: string): ContextMessage[] {
   return brief
     ? [
@@ -89,8 +95,9 @@ function packPair(bubbles: ContextBubble[], why: string): ContextMessage[] {
     : []
 }
 
-export function buildPlanMessages(opts: { brief?: string; facts: Fact[]; bubbles: ContextBubble[]; planDraft?: string; text: string }): ContextMessage[] {
+export function buildPlanMessages(opts: { brief?: string; facts: Fact[]; bubbles: ContextBubble[]; planDraft?: string; text: string; profile?: Profile }): ContextMessage[] {
   return [
+    ...profilePair(opts.profile),
     ...researchPair(opts.brief),
     ...factsPair(opts.facts),
     ...packPair(opts.bubbles, '大纲里没写到的偏好也要照顾到'),
@@ -104,8 +111,9 @@ export function buildPlanMessages(opts: { brief?: string; facts: Fact[]; bubbles
   ]
 }
 
-export function buildFillMessages(opts: { brief?: string; facts: Fact[]; bubbles: ContextBubble[]; plan: string }): ContextMessage[] {
+export function buildFillMessages(opts: { brief?: string; facts: Fact[]; bubbles: ContextBubble[]; plan: string; profile?: Profile }): ContextMessage[] {
   return [
+    ...profilePair(opts.profile),
     ...researchPair(opts.brief),
     ...factsPair(opts.facts),
     ...packPair(opts.bubbles, '填 review、tips 时照顾到，不要因此重排大纲'),
@@ -115,7 +123,7 @@ export function buildFillMessages(opts: { brief?: string; facts: Fact[]; bubbles
   ]
 }
 
-export function buildChatMessages(opts: { facts: Fact[]; digest: string; bubbles: ContextBubble[]; extra?: ContextBubble[]; limit?: number }): ContextMessage[] {
+export function buildChatMessages(opts: { facts: Fact[]; digest: string; bubbles: ContextBubble[]; extra?: ContextBubble[]; limit?: number; profile?: Profile }): ContextMessage[] {
   const { window, older } = splitWindow(opts.bubbles, opts.limit ?? 4)
   const block = factsBlock(opts.facts)
   const earlier = earlierDigest(older)
@@ -125,6 +133,7 @@ export function buildChatMessages(opts: { facts: Fact[]; digest: string; bubbles
     '当前行程摘要：\n' + opts.digest,
   ].filter(Boolean).join('\n\n')
   return [
+    ...profilePair(opts.profile),
     { role: 'user', content: head },
     { role: 'assistant', content: '已读摘要。' },
     ...window.map((b) => ({ role: b.role, content: stripBoilerReply(b.text) })),

@@ -12,10 +12,12 @@ import { wantsVision } from '../src/lib/attach.ts'
 import { readZip } from '../src/lib/zip.ts'
 import { avoidHits, extractFacts, factsBlock, learnFromModel, learnFromUser, mergeFacts, modelDrops, normalizeModelFacts, planAvoidHits, removeFact, takeMemo } from '../src/lib/memory.ts'
 import { buildChatMessages, buildPlanMessages, splitWindow, userPack } from '../src/lib/context.ts'
+import { isEmptyProfile, mergeProfile, profileBlock, proposeProfile, removeProfilePart } from '../src/lib/profile.ts'
 import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
 import { enrichTripTransport } from '../server/transport.mjs'
+import { qualityChecklist } from '../server/quality.mjs'
 
 let n = 0
 const ok = (name, cond) => {
@@ -513,6 +515,91 @@ const dayWith = (stay) => ({
   ok('原话包封顶约 600 字', userPack(s6.bubbles).join('').length <= 600)
   const w = splitWindow(s6.bubbles, 4)
   ok('窗口切分：窗口+窗口外不重不漏', w.window.length === 4 && w.older.length === s6.bubbles.length - 4)
+}
+
+// 7. FILL 后质检：三餐店名、规划条、住宿注记
+{
+  const bare = {
+    days: [{ theme: 'D1', slots: dayWith('待定').slots }],
+  }
+  const bareIssues = qualityChecklist(bare)
+  ok('质检：没店名、没规划条、没住宿都会被点名', bareIssues.some((x) => x.includes('早餐没有具体店名')) && bareIssues.some((x) => x.includes('缺负荷')) && bareIssues.some((x) => x.includes('没有住宿片区')))
+
+  const filled = normalizeTrip({
+    ...BASE,
+    days: [{
+      theme: 'D1',
+      slots: dayWith('成都宾馆').slots,
+      dining: [
+        { meal: '早餐', place: '宽窄巷子蒸饺' },
+        { meal: '午餐', place: '鹤鸣茶社' },
+        { meal: '晚餐', place: '陈麻婆豆腐' },
+      ],
+      craft: {
+        load: { level: '轻', walk: '少走路', why: '收尾' },
+        rain: { cut: '锦里', keep: '茶馆', instead: '改室内' },
+        park: { leave: '宽窄巷子停车场', then: '停稳再走', pickup: '原处取车' },
+      },
+    }],
+    hotelAreas: [{
+      area: '宽窄巷子',
+      options: [{ tier: '中档', name: '成都宽窄巷子亚朵酒店', access: { note: '适老：电梯', status: '待核实' } }],
+    }],
+  })
+  ok('质检：三餐、规划条、住宿注记都在则通过', qualityChecklist(filled).length === 0)
+
+  const placeholders = qualityChecklist({
+    days: [{
+      dining: [
+        { meal: '早餐', place: '住宿店内或就近清淡早餐' },
+        { meal: '午餐', place: '景点附近午餐' },
+        { meal: '晚餐', place: '当日晚餐' },
+      ],
+      craft: filled.days[0].craft,
+    }],
+    hotelAreas: filled.hotelAreas,
+  })
+  ok('质检：占位餐名不算已填', ['早餐', '午餐', '晚餐'].every((meal) => placeholders.some((x) => x.includes(`${meal}没有具体店名`))))
+
+  const generic = normalizeTrip({
+    ...BASE,
+    days: [{ theme: 'D1', slots: dayWith('成都宾馆').slots }],
+    hotelAreas: [{ area: '宽窄巷子', options: [{ tier: '中档', name: '成都宽窄巷子亚朵酒店' }] }],
+  })
+  const genericIssues = qualityChecklist(generic)
+  ok('质检：归一化后仍是占位的午餐继续被点名', genericIssues.includes('D1 午餐没有具体店名'))
+  ok('质检：程序补上的规划条和住宿注记不再报缺', !genericIssues.some((x) => /缺负荷|缺雨天|缺停车|缺适老/.test(x)))
+}
+
+// 8. 跨行程画像：只收长期项，注入后可删
+{
+  const fact = (key, value) => ({ key, value, source: 'user', at: 1 })
+  const offer = proposeProfile({
+    persona: 'stay',
+    facts: [
+      fact('diet', '不吃辣'),
+      fact('stay', '电梯'),
+      fact('stay', '经济型'),
+      fact('dates', '10月1日'),
+      fact('length', '6天'),
+      fact('avoid', '熊猫基地'),
+      fact('must', '都江堰'),
+      fact('origin', '深圳'),
+      fact('party', '6人'),
+    ],
+    userLines: ['从深圳出发，6天', '不去熊猫基地', '我住在成都'],
+  })
+  ok('画像：人格、忌口、档位、常住', offer.persona === 'stay' && offer.diet.join() === '不吃辣' && offer.tier === '经济' && offer.home === '成都')
+  ok('画像：一次性约束不进去', !/熊猫|都江堰|6天|10月|电梯|深圳/.test(JSON.stringify(offer)))
+  const block = profileBlock(offer)
+  ok('画像：注入块只含长期项', /人格：旅居/.test(block) && /忌口：不吃辣/.test(block) && /住宿档位：经济/.test(block) && /常住：成都/.test(block) && !/熊猫基地|6天|电梯/.test(block))
+  const kept = mergeProfile(offer, proposeProfile({ persona: '', facts: [], userLines: [] }))
+  ok('画像：这趟没再提就不冲掉已记住的', kept.persona === 'stay' && kept.home === '成都')
+  const dropped = removeProfilePart(removeProfilePart(offer, 'diet', '不吃辣'), 'persona')
+  ok('画像：删掉后不再注入', isEmptyProfile({ ...dropped, tier: '', home: '' }) && !/旅居|不吃辣/.test(profileBlock({ ...dropped, tier: '', home: '' })))
+  const msgs = buildPlanMessages({ facts: [], bubbles: [], text: '去西安', profile: offer })
+  ok('画像：新行程开场带上', msgs[0].content.includes('跨行程画像') && msgs[0].content.includes('常住：成都'))
+  ok('画像：没有画像就不占消息', buildPlanMessages({ facts: [], bubbles: [], text: '去西安' })[0].content === '去西安')
 }
 
 console.log(`\nGOLDEN ALL PASS (${n})`)

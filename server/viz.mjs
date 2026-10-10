@@ -14,6 +14,7 @@ import { enrichTripTransport } from './transport.mjs'
 import { fetchHotelsByDest, guessDest } from './research.mjs'
 import { detectPersona, normalizePersona, personaLabel, personaTip } from './persona.mjs'
 import { ensureDayCraft } from './craft.mjs'
+import { qualityChecklist } from './quality.mjs'
 
 const SEED_JSON = path.join(vizRoot, 'scripts', 'shudao-trip-zhongqiu.json')
 
@@ -661,6 +662,7 @@ export async function runSkillPage(raw, opts = {}) {
     trip,
     errors: report.errors || [],
     warnings: report.warnings || [],
+    quality: qualityChecklist(trip),
     themeId: trip.ui && trip.ui.themeId,
     themeName: trip.ui && trip.ui.themeName,
     fallback: usedFallback,
