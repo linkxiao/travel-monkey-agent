@@ -134,8 +134,8 @@ async function streamOpenAI({ baseUrl, apiKey, model, messages, provider, mode }
   const payload = {
     model,
     messages,
-    temperature: fillish ? 0.2 : 0.7,
-    max_tokens: fillish ? 16384 : 8192,
+    temperature: mode === 'route' ? 0 : fillish ? 0.2 : 0.7,
+    max_tokens: mode === 'route' ? 600 : fillish ? 16384 : 8192,
   }
 
   let upstream
@@ -284,7 +284,7 @@ export async function handleChat(req, res) {
     }
     if (!model) throw new Error('请选择模型')
     if (!rawMessages?.length) throw new Error('消息为空')
-    const modeName = ['plan', 'talk', 'edit', 'look'].includes(mode) ? mode : 'fill'
+    const modeName = ['plan', 'talk', 'edit', 'look', 'route'].includes(mode) ? mode : 'fill'
 
     const wanted = (Array.isArray(body.images) ? body.images : []).filter(Boolean)
     if (wanted.length > MAX_IMAGES) {

@@ -9,7 +9,7 @@ export async function streamChat(opts: {
   apiKey: string
   customBaseUrl?: string
   messages: ChatMessage[]
-  mode?: 'plan' | 'fill' | 'talk' | 'edit' | 'look'
+  mode?: 'plan' | 'fill' | 'talk' | 'edit' | 'look' | 'route'
   images?: string[]
   onDelta: (text: string) => void
   signal?: AbortSignal

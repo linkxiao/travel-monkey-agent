@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { handleChat } from './server/chat-proxy.mjs'
-import { handleRender, handleValidate, loadSeedTrip } from './server/viz.mjs'
+import { handleRender, handleSeedSave, handleValidate, listSeedTrips, loadSeedTrip } from './server/viz.mjs'
 import { skillStatus } from './server/skill-prompt.mjs'
 import { handlePhotoProxy } from './server/photos.mjs'
 import { handleResearch } from './server/research.mjs'
 import { handleUpload } from './server/uploads.mjs'
-import { handleAccount } from './server/accounts.mjs'
+import { handleAuth } from './server/users.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const assetsRoot = path.join(__dirname, 'travel-assets')
@@ -38,6 +38,14 @@ function localAssets(): Plugin {
         }
         handleRender(req, res)
       })
+      server.middlewares.use('/api/seed/save', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        handleSeedSave(req, res)
+      })
       server.middlewares.use('/api/validate', (req, res) => {
         if (req.method !== 'POST') {
           res.statusCode = 405
@@ -54,8 +62,8 @@ function localAssets(): Plugin {
         }
         handleResearch(req, res)
       })
-      server.middlewares.use('/api/account', (req, res) => {
-        handleAccount(req, res)
+      server.middlewares.use('/api/auth', (req, res) => {
+        handleAuth(req, res)
       })
       server.middlewares.use('/api/upload', (req, res) => {
         if (req.method !== 'POST') {
@@ -80,9 +88,14 @@ function localAssets(): Plugin {
           res.end(JSON.stringify(skillStatus()))
           return
         }
-        if (url === '/seed/trip.json') {
+        if (url === '/seed/list.json') {
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(JSON.stringify(loadSeedTrip()))
+          res.end(JSON.stringify(listSeedTrips()))
+          return
+        }
+        if (url === '/seed/trip.json' || url.startsWith('/seed/trip.json?')) {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify(loadSeedTrip(new URL(url, 'http://local').searchParams.get('id') || '')))
           return
         }
         if (url === '/seed/trip.html' && fs.existsSync(seedHtml)) {

@@ -24,7 +24,7 @@ export const WELCOME_HTML = `<!DOCTYPE html>
   <div class="card">
     <div class="eyebrow">TRAVEL MONKEY</div>
     <h1>Travel <span>Monkey</span><br>行程网页</h1>
-    <p>先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天。系统会给您输出行程大纲，你点击「确认生成」后系统才会生成具体的行程页（此时才消耗token）。</p>
+    <p>先选人格，如旅居、带队或探秘，再说想去哪、玩几天。选项确认后直接生成行程。</p>
     <p class="hint">先选人格，再说天数、节奏和想去的方向。</p>
   </div>
 </body>

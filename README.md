@@ -46,4 +46,4 @@ npm run dev
 
 ## 评测与能力沉淀
 
-尺子和当前得分见 [docs/EVAL.md](docs/EVAL.md)；上下文、记忆与多轮会话的专项标准和待办见 [docs/MEMORY.md](docs/MEMORY.md)。改动脉络、Prompt/Skill/程序工具/第三方能力，以及每项能力推动 EVAL 哪一维、是否成为资产，见 [docs/CAPABILITY.md](docs/CAPABILITY.md)。复评用 Skill [changting-eval](.cursor/skills/changting-eval/SKILL.md)。
+尺子和当前得分见 [docs/EVAL.md](docs/EVAL.md)；上下文与多轮会话的专项标准见 [docs/MEMORY.md](docs/MEMORY.md)（记忆功能已于 10-11 下线，目的地或人数变了就新开一趟）。改动脉络、Prompt/Skill/程序工具/第三方能力，以及每项能力推动 EVAL 哪一维、是否成为资产，见 [docs/CAPABILITY.md](docs/CAPABILITY.md)。复评用 Skill [changting-eval](.cursor/skills/changting-eval/SKILL.md)。

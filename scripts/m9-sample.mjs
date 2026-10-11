@@ -3,7 +3,6 @@
 import fs from 'node:fs'
 import { applySkillSystem } from '../server/skill-prompt.mjs'
 import { extractTrip } from '../src/lib/trip.ts'
-import { avoidHits, learnFromModel, learnFromUser, planAvoidHits, takeMemo } from '../src/lib/memory.ts'
 import { buildFillMessages, buildPlanMessages } from '../src/lib/context.ts'
 
 const key = String(process.env.M9_KEY || '').trim()
@@ -45,48 +44,18 @@ async function complete(messages, mode) {
 }
 
 function session() {
-  return { facts: [], bubbles: [], planDraft: '' }
+  return { bubbles: [], planDraft: '' }
 }
 
+const dayLines = (plan) => String(plan || '').split('\n').filter((line) => /^\s*D\d/.test(line)).join('\n')
+
 async function planTurn(s, text, label) {
-  s.facts = learnFromUser(s.facts, text)
-  const messages = buildPlanMessages({
-    brief: '',
-    facts: s.facts,
-    bubbles: s.bubbles,
-    planDraft: s.planDraft,
-    text,
-  })
-  let turn = await complete(messages, 'plan')
-  let memo = takeMemo(turn.reply)
-  s.facts = learnFromModel(s.facts, memo)
-  const hits = planAvoidHits(memo.text, s.facts)
-  let retry = null
-  if (hits.length) {
-    retry = await complete([
-      ...messages,
-      { role: 'assistant', content: turn.reply },
-      { role: 'user', content: `大纲里又排了用户明确说不去的「${hits.join('、')}」。删掉换成同片区同类的点，其余不变，输出完整大纲。` },
-    ], 'plan')
-    const again = takeMemo(retry.reply)
-    s.facts = learnFromModel(s.facts, again)
-    memo = again
-    turn = { ...turn, retriedBecause: hits }
-  }
-  s.bubbles.push({ role: 'user', text }, { role: 'assistant', text: memo.text })
-  s.planDraft = memo.text
-  return {
-    label,
-    user: text,
-    facts: s.facts.map((f) => ({ key: f.key, value: f.value })),
-    memoFacts: memo.facts.map((f) => ({ key: f.key, value: f.value })),
-    memoDrops: memo.drops,
-    request: turn.request,
-    reply: turn.reply,
-    shown: memo.text,
-    avoidHits: planAvoidHits(memo.text, s.facts),
-    retry: retry && { request: retry.request, reply: retry.reply },
-  }
+  const messages = buildPlanMessages({ brief: '', bubbles: s.bubbles, planDraft: s.planDraft, text })
+  const turn = await complete(messages, 'plan')
+  const shown = turn.reply.trim()
+  s.bubbles.push({ role: 'user', text }, { role: 'assistant', text: shown })
+  s.planDraft = shown
+  return { label, user: text, request: turn.request, reply: turn.reply, shown }
 }
 
 const s1 = session()
@@ -97,29 +66,22 @@ scene1.push(await planTurn(s1, '改成4天3晚', '场景1·第3轮'))
 
 const s2 = session()
 const scene2plan = await planTurn(s2, '成都3天，不去熊猫基地，人太多', '场景2·大纲')
-const fillMessages = buildFillMessages({
-  brief: '',
-  facts: s2.facts,
-  bubbles: s2.bubbles,
-  plan: s2.planDraft,
-})
+const fillMessages = buildFillMessages({ brief: '', bubbles: s2.bubbles, plan: s2.planDraft })
 const filled = await complete(fillMessages, 'fill')
 const trip = extractTrip(filled.reply)
-const pageHits = trip ? avoidHits(trip, s2.facts) : ['没有解析出 trip']
+const pageHasPanda = trip ? /熊猫基地|大熊猫繁育/.test(JSON.stringify(trip.days || [])) : true
 
 const round3 = scene1[2].shown
 const checks = {
   '第3轮大纲照顾到想拍日出': /日出/.test(round3),
   '第3轮大纲照顾到人文或美食': /人文|美食/.test(round3),
-  '第3轮大纲仍带着硬约束': /不吃辣|膝盖|6/.test(round3) || scene1[2].request.some((m) => /不吃辣/.test(m.content) && /膝盖/.test(m.content)),
-  '不去的点不在最终页': pageHits.length === 0,
-  '不去的点不在最终大纲': scene2plan.avoidHits.length === 0,
-  '模型写了记下且记下的是用户说过的不去': scene2plan.memoFacts.some((f) => f.key === 'avoid' && /熊猫/.test(f.value)),
-  '记下没有编出用户没说的忌口或预算': !scene2plan.memoFacts.some((f) => f.key === 'diet' || f.key === 'budget'),
+  '第3轮请求里带着之前的用户原话': scene1[2].request.some((m) => /不吃辣/.test(m.content) && /膝盖/.test(m.content)),
+  '不去的点不在最终大纲': !/熊猫基地|大熊猫繁育/.test(dayLines(scene2plan.shown)),
+  '不去的点不在最终页': !pageHasPanda,
 }
 
 const report = {
-  at: '2026-10-10',
+  at: new Date().toISOString().slice(0, 10),
   provider: 'deepseek',
   model,
   checks,
@@ -127,7 +89,7 @@ const report = {
   scene1,
   scene2: {
     plan: scene2plan,
-    fill: { request: filled.request, reply: filled.reply, pageHits },
+    fill: { request: filled.request, reply: filled.reply, pageHasPanda },
   },
 }
 

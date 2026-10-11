@@ -7,12 +7,12 @@ import { WELCOME_HTML } from './lib/prompt'
 import { fetchResearch, type ResearchBrief } from './lib/research'
 import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
-import { isEmptyProfile, loadProfile, mergeProfile, profileLines, proposeProfile, removeProfilePart, saveProfile, wantsRemember, type Profile } from './lib/profile'
-import { fetchAccount, pushAccount } from './lib/account'
+import { AccountDialog, type AuthInput, type AuthScreen, type AuthSuccess } from './AccountDialog'
+import { TOKEN_KEY, fetchSession, loginAccount, logoutAccount, registerAccount, requestAuthCode } from './lib/auth'
 import { todayAdvice } from './lib/today'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
-import { buildChatMessages, buildFillMessages, buildPlanMessages, factsPair } from './lib/context'
-import { avoidHits, FACT_LABELS, learnFromModel, learnFromUser, modelDrops, namesHitAvoid, normalizeModelFacts, planAvoidHits, removeFact, sortFacts, takeMemo, type Fact, type MemoUpdate } from './lib/memory'
+import { buildChatMessages, buildFillMessages, buildPlanMessages, userPack } from './lib/context'
+import { buildRouteMessages, carryLine, isNewTask, localTurn, parseTurn, planPrefs, tripHead, tripNames, type PrefPlan, type Turn } from './lib/route'
 import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionTitle, type SessionData, type SessionMeta } from './lib/session'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, mentionedDay, photoOutcome, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
 
@@ -80,6 +80,7 @@ export default function App() {
   const [report, setReport] = useState<{ errors: string[]; warnings: string[] }>({ errors: [], warnings: [] })
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [busy, setBusy] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [device, setDevice] = useState<'phone' | 'desktop'>('phone')
@@ -93,29 +94,38 @@ export default function App() {
   const [planDraft, setPlanDraft] = useState('')
   const [planAnswers, setPlanAnswers] = useState<string[]>([])
   const [planningPersona, setPlanningPersona] = useState('')
-  const [profile, setProfile] = useState<Profile>(() => loadProfile())
-  const [profileOffer, setProfileOffer] = useState<Profile | null>(null)
-  const [accountCode, setAccountCode] = useState(() => loadSetting('ct.account', ''))
-  const [accountReady, setAccountReady] = useState(false)
+  const [prefOffer, setPrefOffer] = useState<{ text: string; prefs: string[]; picked: boolean[] } | null>(null)
+  const [authUser, setAuthUser] = useState('')
+  const [authReady, setAuthReady] = useState(false)
+  const [authScreen, setAuthScreen] = useState<AuthScreen | null>(null)
+  const [authSuccess, setAuthSuccess] = useState<AuthSuccess | null>(null)
+  const [authError, setAuthError] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
   const [rainOn, setRainOn] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const loadingRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier']; openHours?: ResearchBrief['openHours'] }>({})
-  const [facts, setFacts] = useState<Fact[]>([])
-  // 同一轮里先记约束再发请求，state 来不及更新，发请求时读 ref
-  const factsRef = useRef<Fact[]>([])
-  const profileRef = useRef<Profile>(profile)
-  const accountRef = useRef(accountCode)
+  const authTokenRef = useRef(loadSetting(TOKEN_KEY, ''))
   const [sessionId, setSessionId] = useState('')
   const [sessionList, setSessionList] = useState<SessionMeta[]>([])
   const [hydrated, setHydrated] = useState(false)
   const createdRef = useRef(Date.now())
+  const [seedList, setSeedList] = useState<Array<{ id: string; title: string }>>([])
+
+  useEffect(() => {
+    fetch('/seed/list.json')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list) => setSeedList(Array.isArray(list) ? list : []))
+      .catch(() => setSeedList([]))
+  }, [])
 
   const provider = getProvider(providerId)
   const today = todayAdvice(trip, { rain: rainOn })
   const model = providerId === 'custom' ? (customModel || 'gpt-4o') : modelId
   const canConfirm = Boolean(planDraft && !trip)
+  const tripDays = Array.isArray(trip?.days) ? (trip.days as unknown[]).length : null
   const askItems = useMemo(() => {
     if (canConfirm) return extractAskItems(planDraft, { loose: true })
     if (!trip) return []
@@ -139,6 +149,32 @@ export default function App() {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
   }, [bubbles, busy])
 
+  useEffect(() => {
+    if (!generating) return
+    let raf = 0
+    const place = () => {
+      raf = 0
+      const box = loadingRef.current
+      if (!box) return
+      const rect = box.getBoundingClientRect()
+      const top = Math.max(rect.top, 0)
+      const bottom = Math.min(rect.bottom, window.innerHeight)
+      const y = bottom > top ? (top + bottom) / 2 - rect.top : rect.height / 2
+      box.style.setProperty('--loading-y', `${Math.round(y)}px`)
+    }
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(place)
+    }
+    place()
+    window.addEventListener('scroll', schedule, true)
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
+    }
+  }, [generating])
+
   const askKey = askItems.map((item) => item.question).join('\n')
   useEffect(() => {
     setPlanAnswers(askItems.map(() => ''))
@@ -161,40 +197,25 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    profileRef.current = profile
-    saveProfile(profile)
-    const code = accountRef.current
-    if (!accountReady || !code) return
-    void pushAccount(code, profile)
-  }, [profile, accountReady])
-
-  useEffect(() => {
     let alive = true
-    const code = accountRef.current
-    if (!code) {
-      setAccountReady(true)
+    const token = authTokenRef.current
+    if (!token) {
+      setAuthReady(true)
       return
     }
-    void fetchAccount(code).then((remote) => {
+    void fetchSession(token).then((remote) => {
       if (!alive) return
-      if (remote?.found && remote.profile && !isEmptyProfile(remote.profile)) setProfile(remote.profile)
-      setAccountReady(true)
+      if (!remote) {
+        authTokenRef.current = ''
+        try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+        setAuthReady(true)
+        return
+      }
+      setAuthUser(remote.username)
+      setAuthReady(true)
     })
     return () => { alive = false }
   }, [])
-
-  function commitFacts(next: Fact[]) {
-    factsRef.current = next
-    setFacts(next)
-  }
-
-  function learnUser(text: string) {
-    commitFacts(learnFromUser(factsRef.current, text))
-  }
-
-  function learnModel(update: MemoUpdate) {
-    if (update.facts.length || update.drops.length) commitFacts(learnFromModel(factsRef.current, update))
-  }
 
   function rememberSessionId(id: string) {
     try { localStorage.setItem('ct.session', id) } catch { /* ignore */ }
@@ -208,7 +229,7 @@ export default function App() {
     setPlanDraft(s?.planDraft || '')
     setPlanningPersona(s?.persona || '')
     researchRef.current = (s?.research || {}) as typeof researchRef.current
-    commitFacts(s?.facts || [])
+    setPrefOffer(null)
     setVersions(s?.versions || [])
     setVersionSel(-1)
     setReport({ errors: [], warnings: [] })
@@ -231,8 +252,6 @@ export default function App() {
         const fresh = newSessionId()
         rememberSessionId(fresh)
         setSessionId(fresh)
-        const remembered = loadProfile()
-        if (remembered.persona) setPlanningPersona(remembered.persona)
       }
       setSessionList(await listSessions().catch(() => []))
       if (alive) setHydrated(true)
@@ -253,7 +272,6 @@ export default function App() {
       planDraft,
       persona: planningPersona,
       research: researchRef.current,
-      facts: factsRef.current,
       versions,
     }
     if (isEmptySession(data) && !sessionList.some((s) => s.id === sessionId)) return
@@ -270,17 +288,15 @@ export default function App() {
     if (!hydrated || !sessionId || busy) return
     const timer = window.setTimeout(() => void persistNow(), 400)
     return () => window.clearTimeout(timer)
-  }, [hydrated, sessionId, busy, bubbles, trip, html, planDraft, planningPersona, facts, versions])
+  }, [hydrated, sessionId, busy, bubbles, trip, html, planDraft, planningPersona, versions])
 
   async function newTrip() {
     if (busy) return
     await persistNow()
     const id = newSessionId()
     resetWorkspace()
-    if (profileRef.current.persona) setPlanningPersona(profileRef.current.persona)
     rememberSessionId(id)
     setSessionId(id)
-    setProfileOffer(null)
   }
 
   async function switchTrip(id: string) {
@@ -304,7 +320,6 @@ export default function App() {
     // 先换掉当前会话，免得还没触发的自动保存把刚删的又写回去
     if (id === sessionId) {
       resetWorkspace()
-      if (profileRef.current.persona) setPlanningPersona(profileRef.current.persona)
       const fresh = newSessionId()
       rememberSessionId(fresh)
       setSessionId(fresh)
@@ -366,19 +381,38 @@ export default function App() {
     return out
   }
 
-  async function loadSeed() {
+  async function loadSeed(id: string) {
     try {
-      const res = await fetch('/seed/trip.json')
+      const res = await fetch(`/seed/trip.json?id=${encodeURIComponent(id)}`)
       if (!res.ok) {
         showToast('没有找到本地示例行程表')
         return
       }
       const data = await res.json()
+      if (trip || planDraft || bubbles.length) await newTrip()
       const out = await applyTrip(data, { skipPhotos: true, skipTransport: true })
       setPlanDraft('')
       setPlanAnswers([])
       setPlanningPersona('')
       showToast(out.themeName ? `已载入示例行程（${out.themeName}）` : '已载入示例行程表')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function saveAsSeed() {
+    if (!trip) return
+    try {
+      const res = await fetch('/api/seed/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trip }),
+      })
+      const out = await res.json()
+      if (!res.ok) throw new Error(out.error || '保存失败')
+      const list = await fetch('/seed/list.json').then((r) => (r.ok ? r.json() : []))
+      setSeedList(Array.isArray(list) ? list : [])
+      showToast(`已存为第 ${out.order} 个示例行程`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -438,7 +472,7 @@ export default function App() {
           const next = [...prev]
           const last = next[next.length - 1]
           if (last?.role === 'assistant') {
-            next[next.length - 1] = { role: 'assistant', text: live ? takeMemo(acc).text : pendingText, pending: true }
+            next[next.length - 1] = { role: 'assistant', text: live ? acc : pendingText, pending: true }
           }
           return next
         })
@@ -466,54 +500,41 @@ export default function App() {
     })
   }
 
-  async function runPlan(text: string) {
+  async function runPlan(text: string, fresh = false, autoFill = false) {
     const picked = planningPersona && !detectPersona(text)
       ? `规划人格：${personaLabel(planningPersona)}。按此人格写大纲。\n${text}`
       : text
     const research = await ensureResearch(text)
-    const history: ChatMessage[] = buildPlanMessages({ brief: research.brief, facts: factsRef.current, bubbles, planDraft, text: picked, profile: profileRef.current })
+    const history: ChatMessage[] = buildPlanMessages({ brief: research.brief, bubbles: fresh ? [] : bubbles, planDraft: fresh ? '' : planDraft, text: picked })
     const first = await streamTo(history, 'plan', '正在写按天的大纲…', true)
     if (first.signal.aborted) return
-    let acc = first.acc
-    if (!acc.trim()) throw new Error('模型没有返回计划')
-    let memo = takeMemo(acc)
-    learnModel(memo)
-    // 用户说过不去的点又排进了大纲：打回一次，不让用户自己去挑
-    const hits = planAvoidHits(memo.text, factsRef.current)
-    if (hits.length) {
-      const again = await streamTo([
-        ...history,
-        { role: 'assistant', content: acc },
-        { role: 'user', content: `大纲里又排了用户明确说不去的「${hits.join('、')}」。删掉换成同片区同类的点，其余不变，输出完整大纲。` },
-      ], 'plan', '大纲里有你说不去的点，正在换掉…', true)
-      if (again.signal.aborted) return
-      if (again.acc.trim()) {
-        acc = again.acc
-        memo = takeMemo(acc)
-        learnModel(memo)
-      }
-    }
-    const nextPlan = memo.text
+    const nextPlan = first.acc.trim()
+    if (!nextPlan) throw new Error('模型没有返回计划')
     const found = detectPersona(nextPlan)
     if (found) setPlanningPersona(found)
     setPlanDraft(nextPlan)
     setPlanAnswers(extractAskItems(nextPlan).map(() => ''))
-    const still = planAvoidHits(nextPlan, factsRef.current)
     setBubbles((prev) => {
       const next = [...prev]
       next[next.length - 1] = {
         role: 'assistant',
         text: nextPlan
-          + (still.length ? `\n\n注意：大纲里仍有你说不去的「${still.join('、')}」，出页时会再换一次；也可以直接说换成什么。` : '')
-          + '\n\n下面先点选项或自己写，看完后再点「提交答复」；也可以直接「确认生成」。',
+          + (autoFill
+            ? ''
+            : extractAskItems(nextPlan).length
+              ? '\n\n选好下面的选项，点「确认并生成」，会直接做出行程页。'
+              : '\n\n没有要确认的选项。点「确认生成」做出行程页。'),
       }
       return next
     })
+    return nextPlan
   }
 
-  async function runFill(plan: string) {
+  async function runFill(plan: string, fresh = false) {
+    setGenerating(true)
+    try {
     const research = researchRef.current
-    const history: ChatMessage[] = buildFillMessages({ brief: research.brief, facts: factsRef.current, bubbles, plan, profile: profileRef.current })
+    const history: ChatMessage[] = buildFillMessages({ brief: research.brief, bubbles: fresh ? [] : bubbles, plan })
     let acc = ''
     try {
       const filled = await streamTo(history, 'fill', '正在填写行程表…')
@@ -536,12 +557,11 @@ export default function App() {
     }
     if (research.openHours?.length) nextTrip.openHours = research.openHours
     let out = await applyTrip(nextTrip)
-    const avoided = avoidHits(out.trip, factsRef.current)
     const qualityOf = (page: { quality?: string[] }) => page.quality || []
-    if ((out.errors.length || qualityOf(out).length || avoided.length) && parsed) {
+    if ((out.errors.length || qualityOf(out).length) && parsed) {
       setBubbles((prev) => {
         const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', text: out.errors.length ? '页面校验未过，正在修表…' : qualityOf(out).length ? '质检还缺店名或规划条，正在补…' : '表里有你说不去的点，正在换掉…', pending: true }
+        next[next.length - 1] = { role: 'assistant', text: out.errors.length ? '页面校验未过，正在修表…' : '质检还缺店名或规划条，正在补…', pending: true }
         return next
       })
       try {
@@ -554,7 +574,6 @@ export default function App() {
               '机械校验未通过。请只输出修正后的完整 trip JSON，不要解释。',
               out.errors.length ? 'ERROR:\n- ' + out.errors.join('\n- ') : '',
               qualityOf(out).length ? '质检清单（必须补上具体内容，不要用「待定 / 就近 / 当日晚餐」占位）：\n- ' + qualityOf(out).join('\n- ') : '',
-              avoided.length ? `用户明确说不去：${avoided.join('、')}。这些点和店必须换成同片区同类的，其余不动。` : '',
             ].filter(Boolean).join('\n'),
           },
         ]
@@ -577,16 +596,14 @@ export default function App() {
         : gaps.length
           ? '已出页。质检还缺：' + gaps.slice(0, 2).join('；') + (gaps.length > 2 ? `等 ${gaps.length} 处` : '') + '。直接说店名或第几天，我来补。'
           : (out.fallback ? '这版版式没过检查，已换回陶土宣纸，内容不受影响。' : `已出页。要改某一天，直接说改哪个点；问时间、距离、累不累，我先回答。`)
-    const left = avoidHits(out.trip, factsRef.current)
-    setBubbles((prev) => {
-      const next = [...prev]
-      next[next.length - 1] = { role: 'assistant', text: left.length ? `${note}\n注意：页面里仍有你说不去的「${left.join('、')}」，直接说「D2第3格换成…」我来改。` : note }
-      return next
-    })
+    finishBubble(note)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   function recentChat(extra: { role: 'user' | 'assistant'; text: string }[] = [], opts?: { limit?: number; day?: number | null }): ChatMessage[] {
-    return buildChatMessages({ facts: factsRef.current, digest: digestTrip(trip, { day: opts?.day }), bubbles, extra, limit: opts?.limit, profile: profileRef.current })
+    return buildChatMessages({ digest: digestTrip(trip, { day: opts?.day }), bubbles, extra, limit: opts?.limit })
   }
 
   function finishBubble(text: string) {
@@ -601,9 +618,7 @@ export default function App() {
     const { acc, signal } = await streamTo(recentChat([{ role: 'user', text }], { limit: 4, day: mentionedDay(text) }), 'talk', '正在对照行程…', true)
     if (signal.aborted) return
     if (!acc.trim()) throw new Error('模型没有返回内容')
-    const memo = takeMemo(acc)
-    learnModel(memo)
-    finishBubble(stripBoilerReply(memo.text) || memo.text)
+    finishBubble(stripBoilerReply(acc) || acc.trim())
   }
 
   // 让模型看图说话：这一轮只出文字，右边页面一个字都不动
@@ -615,7 +630,7 @@ export default function App() {
     ].filter(Boolean).join('\n')
     const history = trip
       ? recentChat([{ role: 'user', text: ask }], { limit: 4, day: mentionedDay(text) })
-      : [...factsPair(factsRef.current), { role: 'user' as const, content: ask }]
+      : [{ role: 'user' as const, content: ask }]
     const { acc, signal } = await streamTo(history, 'look', '正在看图…', true, urls)
     if (signal.aborted) return
     if (!acc.trim()) throw new Error('模型没有返回内容')
@@ -643,13 +658,11 @@ export default function App() {
     })
     // 验货：新名必须在渲染后的 HTML 里找得到，否则"进了表没上页"，不许说已写入
     const unseen = findUnseenInHtml(touched, out.html)
-    const avoided = namesHitAvoid(touched, factsRef.current)
     finishBubble([
       stripBoilerReply(reply),
       '已写入页面：' + applied.join('；'),
       failed.length ? '未改成：' + failed.join('；') : '',
       unseen.length ? `页面上没找到「${unseen.join('、')}」（补丁已进表，疑似模具没渲染该字段，请截图告诉我）` : '',
-      avoided.length ? `注意：「${avoided.join('、')}」是你说过不去的；要恢复就说「还是去${avoided[0]}」。` : '',
       namesChanged ? '点名变了，正在按新名字补图。' : '',
       out.errors.length ? '校验：' + out.errors.slice(0, 2).join('；') : '',
     ].filter(Boolean).join('\n'))
@@ -692,7 +705,6 @@ export default function App() {
       }
       throw new Error(acc.trim() ? '模型没有按补丁格式回答，行程未改。' : '模型没有返回内容')
     }
-    learnModel({ facts: normalizeModelFacts(env.facts), drops: modelDrops(env.facts) })
     const rewritten = applyReplaceDays(trip, env.replaceDays || [])
     const patched = applyChanges(rewritten.trip, env.changes)
     let nextTrip = patched.trip
@@ -787,10 +799,28 @@ export default function App() {
   async function submitPlanAnswers() {
     if (!planQuestions.length || busy) return
     if (planAnswers.some((a) => !String(a || '').trim())) {
-      showToast('每道待确认都选好或写好后，再点提交答复')
+      showToast('每道待确认都选好或写好后，再确认')
       return
     }
-    await run(formatAskAnswers(askItems, planAnswers))
+    const reply = formatAskAnswers(askItems, planAnswers)
+    if (trip) {
+      await run(reply, true)
+      return
+    }
+    if (!planDraft) return
+    if (!requireModelKey()) return
+    const plan = `${planDraft.trim()}\n\n${reply}`
+    setError('')
+    setBusy(true)
+    setBubbles((prev) => [...prev, { role: 'user', text: reply }, { role: 'assistant', text: '正在按你的选择生成行程页…', pending: true }])
+    try {
+      setPlanDraft(plan)
+      await runFill(plan)
+    } catch (err) {
+      showFail(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
   }
 
   function requireModelKey() {
@@ -870,87 +900,148 @@ export default function App() {
     return true
   }
 
-  function userLinesForProfile(extra = '') {
-    return [...bubbles.filter((b) => b.role === 'user' && !b.pending).map((b) => b.text), extra].filter(Boolean)
+  function acceptAuth(result: { token: string; username: string }) {
+    authTokenRef.current = result.token
+    setAuthUser(result.username)
+    try { localStorage.setItem(TOKEN_KEY, result.token) } catch { /* ignore */ }
+    try { localStorage.removeItem('ct.account') } catch { /* ignore */ }
+    setAuthReady(true)
+    setAuthError('')
   }
 
-  function offerRemember(text: string) {
-    learnUser(text)
-    const offer = proposeProfile({
-      persona: planningPersona || profileRef.current.persona,
-      facts: factsRef.current,
-      userLines: userLinesForProfile(text),
-    })
-    setInput('')
-    setProfileOffer(isEmptyProfile(offer) ? null : offer)
-    setBubbles((prev) => [...prev, {
-      role: 'user',
-      text,
-    }, {
-      role: 'assistant',
-      text: isEmptyProfile(offer)
-        ? '这趟还没有能带到下一趟的内容。能记的只有人格、忌口、住宿档位（经济 / 中档 / 高端）和常住片区。日期、天数、必去、不去不会记。'
-        : '下一趟可以记住这些。点「确认记住」，或者说「先跳过」。\n' + profileLines(offer).join('\n'),
-    }])
+  function openAuth(screen: AuthScreen) {
+    setAuthError('')
+    setAuthSuccess(null)
+    setAuthScreen(screen)
   }
 
-  function rememberAccountCode() {
-    const current = accountRef.current.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (current.length >= 6) return current
-    const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'
-    const bytes = crypto.getRandomValues(new Uint8Array(8))
-    const next = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
-    accountRef.current = next
-    setAccountCode(next)
-    try { localStorage.setItem('ct.account', next) } catch { /* ignore */ }
-    return next
+  function closeAuth() {
+    if (authBusy) return
+    setAuthSuccess(null)
+    setAuthScreen(null)
+    setAuthError('')
   }
 
-  async function applyAccountCode(raw: string) {
-    const code = raw.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (code.length < 6 || code.length > 16) return
-    accountRef.current = code
-    setAccountCode(code)
-    try { localStorage.setItem('ct.account', code) } catch { /* ignore */ }
-    const remote = await fetchAccount(code)
-    if (remote?.found && remote.profile) setProfile(remote.profile)
-    else void pushAccount(code, profileRef.current)
-    setAccountReady(true)
+  async function submitAuth(input: AuthInput) {
+    if (!authScreen || authBusy) return
+    setAuthError('')
+    setAuthBusy(true)
+    try {
+      if (authScreen === 'register') {
+        const result = await registerAccount({ account: input.account, code: input.code, password: input.password })
+        if (!result.token) throw new Error('注册没有完成，请再试一次')
+        acceptAuth(result)
+        setAuthSuccess({ kind: 'register', username: result.username })
+      } else {
+        const result = await loginAccount({ account: input.account, password: input.password })
+        if (!result.token) throw new Error('登录没有完成，请再试一次')
+        acceptAuth(result)
+        setAuthSuccess({ kind: 'login', username: result.username })
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : '账号请求失败')
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
-  function confirmProfile(offer = profileOffer) {
-    if (!offer || isEmptyProfile(offer)) return
-    const next = mergeProfile(profileRef.current, offer)
-    rememberAccountCode()
-    setAccountReady(true)
-    setProfile(next)
-    if (next.persona) setPlanningPersona(next.persona)
-    setProfileOffer(null)
-    setBubbles((prev) => [...prev, { role: 'assistant', text: '已记住。新建行程时会带上这些。换一台设备时，填同一串口令就能看见。要去掉某一条，点画像上的 ×。' }])
+  async function signOut() {
+    const token = authTokenRef.current
+    authTokenRef.current = ''
+    setAuthUser('')
+    setAuthScreen(null)
+    setAuthSuccess(null)
+    try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+    if (token) void logoutAccount(token)
   }
 
-  async function run(prompt: string) {
+  function openingText() {
+    return bubbles.find((b) => b.role === 'user' && !b.pending && b.text.trim())?.text || ''
+  }
+
+  async function judgeTurn(text: string): Promise<Turn> {
+    const opening = openingText()
+    const fallback = localTurn(opening, text, tripDays)
+    const ac = new AbortController()
+    const timer = window.setTimeout(() => ac.abort(), 8000)
+    let acc = ''
+    try {
+      await streamChat({
+        provider: providerId,
+        model,
+        apiKey: sanitizeApiKey(apiKey),
+        customBaseUrl,
+        messages: buildRouteMessages({ opening, head: tripHead(trip, planDraft), said: userPack(bubbles), text }),
+        mode: 'route',
+        signal: ac.signal,
+        onDelta: (delta) => { acc += delta },
+      })
+      return parseTurn(acc) || fallback
+    } catch {
+      return fallback
+    } finally {
+      window.clearTimeout(timer)
+    }
+  }
+
+  // 新任务另开一趟会话，旧行程留在列表里；跟着人走的偏好人数没变就沿用，人数变了才问
+  async function startNewTask(text: string, plan: PrefPlan) {
+    await persistNow()
+    const id = newSessionId()
+    const persona = planningPersona
+    resetWorkspace()
+    setPlanningPersona(persona)
+    rememberSessionId(id)
+    setSessionId(id)
+    if (plan.mode === 'ask') {
+      setBubbles([{ role: 'user', text }, { role: 'assistant', text: '这是一趟新行程，同行人数变了。上一趟提过下面这些偏好，这趟还要吗？' }])
+      setPrefOffer({ text, prefs: plan.prefs, picked: plan.prefs.map(() => true) })
+      return
+    }
+    setBubbles([{ role: 'user', text }])
+    await generateNewTask(text, plan.prefs, plan.mode === 'carry')
+  }
+
+  async function generateNewTask(text: string, prefs: string[], auto = false) {
+    const line = carryLine(prefs)
+    const note = line && auto ? `已沿用上一趟的偏好：${prefs.join('；')}。这趟不需要的话直接说去掉。` : ''
+    setBubbles((prev) => [
+      ...prev,
+      ...(line && !auto ? [{ role: 'user' as const, text: line }] : []),
+      ...(note ? [{ role: 'assistant' as const, text: note }] : []),
+      { role: 'assistant' as const, text: '', pending: true },
+    ])
+    setGenerating(true)
+    try {
+      const plan = await runPlan([text, line].filter(Boolean).join('\n'), true, true)
+      if (plan) await runFill(plan, true)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function settlePrefs(useThem: boolean) {
+    const offer = prefOffer
+    if (!offer || busy || !requireModelKey()) return
+    setPrefOffer(null)
+    setError('')
+    setBusy(true)
+    try {
+      await generateNewTask(offer.text, useThem ? offer.prefs.filter((_, i) => offer.picked[i]) : [])
+    } catch (err) {
+      showFail(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function run(prompt: string, sameTask = false) {
     const text = prompt.trim()
     if (busy) return
-    if (profileOffer && /先跳过|不用记|取消记住/.test(text)) {
-      setProfileOffer(null)
-      setInput('')
-      setBubbles((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '好，这次不写入跨行程画像。' }])
-      return
-    }
-    if (profileOffer && /确认记住|记住这些/.test(text)) {
-      setInput('')
-      setBubbles((prev) => [...prev, { role: 'user', text }])
-      confirmProfile()
-      return
-    }
-    if (wantsRemember(text) && !attachments.length) {
-      offerRemember(text)
-      return
-    }
+    if (prefOffer) setPrefOffer(null)
     const pics = attachments.filter((a) => a.kind === 'image')
     const docs = attachments.filter((a) => a.kind === 'text')
-    if ((!text && !attachments.length) || busy) return
+    if (!text && !attachments.length) return
     const restyleAsked = /换皮|换配色|换版式|换一版/.test(text)
     const restyleOnly = /^(请?帮我)?(换皮|换配色|换版式|换一版)([成到为：:\s].*)?[。.!！]?$/.test(text)
     const recentForLocal = bubbles
@@ -961,37 +1052,28 @@ export default function App() {
     const requestPack = [text, ...bubbles.filter((b) => b.role === 'user' && b.text.trim() && !b.pending).slice(-3).map((b) => b.text)].join('\n')
     const replay = Boolean(trip && (wantsPageSync(text) || /继续(优化|改|做)|一直没有|没有反应/.test(text)))
     const pack = replay ? requestPack : text
-    const local = trip && (wantsTripEdit(text) || wantsTripEdit(pack)) ? inferLocalEdit(text, recentForLocal) : { replaceDays: [], changes: [], adds: [] }
-    const localEdit = Boolean(local.replaceDays.length || local.changes.length || local.adds.length)
-    const doEdit = Boolean(trip && (wantsTripEdit(text) || wantsTripEdit(pack) || localEdit))
-    const doPhotos = Boolean(trip && (wantsPhotos(text) || wantsPhotos(pack)))
     const doLook = Boolean(pics.length && wantsVision(text, Boolean(trip)))
-    const needsModel = (() => {
-      if (doLook) return true
-      if (pics.length) return false
-      if (trip && restyleOnly) return false
-      if (trip && doPhotos && !doEdit) return false
-      if (trip && doEdit && localEdit) return false
-      return true
+    const confirmPlan = Boolean(!trip && planDraft && isConfirm(text))
+    const routed = Boolean((trip || planDraft) && text && !pics.length && !confirmPlan && !(trip && restyleOnly))
+    const keyReady = Boolean(sanitizeApiKey(apiKey))
+    const preset: Turn | null = sameTask ? { ...localTurn('', '', null), action: 'edit' } : null
+    const offline = routed && !keyReady ? (preset || localTurn(openingText(), text, tripDays)) : null
+    const offlineNew = Boolean(offline && isNewTask(offline, text))
+    const localEdit = (() => {
+      if (!trip || !offline || offlineNew || offline.action !== 'edit' || !wantsTripEdit(text)) return false
+      const local = inferLocalEdit(text, recentForLocal)
+      return Boolean(local.replaceDays.length || local.changes.length || local.adds.length)
     })()
-    if (needsModel && !requireModelKey()) return
+    const free = Boolean((pics.length && !doLook) || (trip && restyleOnly) || (trip && offline && !offlineNew && offline.action === 'photos') || localEdit)
+    if (!free && !requireModelKey()) return
     setError('')
     setInput('')
     setBusy(true)
-    // 附件里的备注（「忌口：不吃辣」）也算用户说的；整份攻略只看开头，免得把别人的行程当约束
-    learnUser([text, ...docs.map((d) => (d.kind === 'text' ? d.text.slice(0, 3000) : ''))].filter(Boolean).join('\n'))
     if (trip && restyleOnly) {
       setBubbles((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '正在换皮…', pending: true }])
       try {
         const out = await restyle(themeFromText(text))
-        setBubbles((prev) => {
-          const next = [...prev]
-          next[next.length - 1] = {
-            role: 'assistant',
-            text: out?.fallback ? '换皮未过校验，已回退陶土模具。' : `已换皮：${out?.themeName || '下一套'}（没走模型）。`,
-          }
-          return next
-        })
+        finishBubble(out?.fallback ? '换皮未过校验，已回退陶土模具。' : `已换皮：${out?.themeName || '下一套'}（没走模型）。`)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -1000,7 +1082,11 @@ export default function App() {
       return
     }
     const attachNote = attachments.length ? `（附件：${attachments.map((a) => a.name).join('、')}）` : ''
-    setBubbles((prev) => [...prev, { role: 'user', text: [text, attachNote].filter(Boolean).join(' ') }, { role: 'assistant', text: '', pending: true }])
+    setBubbles((prev) => [
+      ...prev,
+      { role: 'user' as const, text: [text, attachNote].filter(Boolean).join(' ') },
+      { role: 'assistant' as const, text: '', pending: true },
+    ])
     try {
       // 贴图走本机（不花钱），问图才送模型看
       if (doLook) {
@@ -1014,11 +1100,39 @@ export default function App() {
         return
       }
       const ask = docs.length ? [text, attachmentsToPrompt(docs)].filter(Boolean).join('\n\n') : text
-      const edited = trip && doEdit ? await runEdit(ask, restyleAsked) : trip
-      if (trip && doPhotos) await runPhotos(pack, doEdit, edited)
-      if (trip && !doEdit && !doPhotos) await runTalk(ask)
-      else if (!trip && planDraft && isConfirm(text)) await runFill(planDraft)
-      else if (!trip) await runPlan(ask)
+      if (confirmPlan) {
+        await runFill(planDraft)
+        return
+      }
+      if (!routed) {
+        await runPlan(ask)
+        setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
+        return
+      }
+      const turn = preset || offline || await judgeTurn(text)
+      if (isNewTask(turn, text)) {
+        await startNewTask(ask, planPrefs(turn, [...turn.task.places, ...tripNames(trip)]))
+        setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
+        return
+      }
+      if (!trip) {
+        await runPlan(ask)
+      } else if (turn.action === 'replan') {
+        setGenerating(true)
+        try {
+          const plan = await runPlan(ask, false, true)
+          if (plan) await runFill(plan)
+        } finally {
+          setGenerating(false)
+        }
+      } else if (turn.action === 'photos') {
+        await runPhotos(pack, false, trip)
+      } else if (turn.action === 'ask') {
+        await runTalk(ask)
+      } else {
+        const edited = await runEdit(ask, restyleAsked)
+        if (wantsPhotos(text)) await runPhotos(pack, true, edited)
+      }
       setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
     } catch (err) {
       if (abortRef.current?.signal.aborted) return
@@ -1062,8 +1176,27 @@ export default function App() {
         <header className="brand">
           <div className="brand-kicker">TRAVEL MONKEY</div>
           <h1>Travel <span>Monkey</span></h1>
-          <p>先选旅居、带队或探秘，再说想去哪、玩几天。先看大纲，点「确认生成」后才做出行程页。</p>
+          <p>先选旅居、带队或探秘，再说想去哪、玩几天。选项确认后直接生成行程。</p>
           {skillLabel && <p className="skill-ok">{skillLabel}</p>}
+          <div className="account-entry">
+            {!authReady && authTokenRef.current ? (
+              <span>正在确认登录…</span>
+            ) : authUser ? (
+              <button type="button" className="account-chip" onClick={() => openAuth('account')}>已登录 · {authUser}</button>
+            ) : (
+              <>
+                <button type="button" className="primary" onClick={() => openAuth('login')}>登录</button>
+                <button type="button" onClick={() => openAuth('register')}>注册</button>
+              </>
+            )}
+            <span>
+              {authUser
+                ? '已登录'
+                : !authReady && authTokenRef.current
+                  ? '正在核对登录状态'
+                  : '未登录。注册时设置密码，之后用邮箱和密码登录'}
+            </span>
+          </div>
         </header>
 
         <div className="session-bar">
@@ -1081,22 +1214,10 @@ export default function App() {
             ))}
           </select>
           <button type="button" className="ghost" disabled={busy || !hydrated} onClick={() => void newTrip()}>新建行程</button>
-          <button type="button" className="ghost" disabled={busy} onClick={() => offerRemember('记住我')}>记住我</button>
           {sessionList.some((s) => s.id === sessionId) && (
             <button type="button" className="ghost" disabled={busy} onClick={() => void dropTrip(sessionId)}>删除</button>
           )}
         </div>
-
-        <label className="account-line">
-          <span>换设备口令 · 两台设备填同一串，画像就跟着走</span>
-          <input
-            value={accountCode}
-            onChange={(e) => setAccountCode(e.target.value)}
-            onBlur={() => void applyAccountCode(accountCode)}
-            placeholder="6 到 16 位字母或数字"
-            autoComplete="off"
-          />
-        </label>
 
         <details className="controls" open={apiKey.trim() ? undefined : true}>
           <summary>连接模型（填过可以收起）</summary>
@@ -1200,68 +1321,25 @@ export default function App() {
           ))}
         </div>
 
-        {(!isEmptyProfile(profile) || profileOffer) && (
-          <div className="plan-ask facts-board">
-            <div className="plan-ask-k">跨行程画像 · 新建行程也会带上，点 × 删掉</div>
-            {!isEmptyProfile(profile) && (
-              <div className="chips">
-                {profile.persona && (
-                  <span className="chip fact">
-                    <b>人格</b>
-                    <span className="chip-name">{personaLabel(profile.persona)}</span>
-                    <button type="button" aria-label="删掉画像人格" disabled={busy} onClick={() => setProfile(removeProfilePart(profile, 'persona'))}>×</button>
-                  </span>
-                )}
-                {profile.diet.map((item) => (
-                  <span className="chip fact" key={item}>
-                    <b>忌口</b>
-                    <span className="chip-name">{item}</span>
-                    <button type="button" aria-label={`删掉画像忌口 ${item}`} disabled={busy} onClick={() => setProfile(removeProfilePart(profile, 'diet', item))}>×</button>
-                  </span>
-                ))}
-                {profile.tier && (
-                  <span className="chip fact">
-                    <b>档位</b>
-                    <span className="chip-name">{profile.tier}</span>
-                    <button type="button" aria-label="删掉画像档位" disabled={busy} onClick={() => setProfile(removeProfilePart(profile, 'tier'))}>×</button>
-                  </span>
-                )}
-                {profile.home && (
-                  <span className="chip fact">
-                    <b>常住</b>
-                    <span className="chip-name">{profile.home}</span>
-                    <button type="button" aria-label="删掉画像常住" disabled={busy} onClick={() => setProfile(removeProfilePart(profile, 'home'))}>×</button>
-                  </span>
-                )}
-              </div>
-            )}
-            {profileOffer && (
-              <div className="plan-q-ops">
-                <button type="button" className="ghost" disabled={busy} onClick={() => confirmProfile()}>确认记住</button>
-                <button type="button" className="ghost" disabled={busy} onClick={() => { setProfileOffer(null); setBubbles((prev) => [...prev, { role: 'assistant', text: '好，这次不写入跨行程画像。' }]) }}>先跳过</button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {facts.length > 0 && (
-          <div className="plan-ask facts-board">
-            <div className="plan-ask-k">本趟记住的约束 · 每轮都带给模型，记错了点 × 删掉</div>
-            <div className="chips">
-              {sortFacts(facts).map((f) => (
-                <span className={`chip fact ${f.source}`} key={`${f.key}-${f.value}`} title={f.source === 'model' ? '模型从你的话里记下的' : '从你的原话里记下的'}>
-                  <b>{FACT_LABELS[f.key]}</b>
-                  <span className="chip-name">{f.value}</span>
-                  <button
-                    type="button"
-                    aria-label={`删掉约束 ${f.value}`}
+        {prefOffer && (
+          <div className="plan-ask pref-pick">
+            <div className="plan-ask-k">上一趟的偏好 · 勾选要沿用的</div>
+            <div className="pref-list">
+              {prefOffer.prefs.map((p, i) => (
+                <label key={p} className={prefOffer.picked[i] ? 'on' : ''}>
+                  <input
+                    type="checkbox"
+                    checked={prefOffer.picked[i]}
                     disabled={busy}
-                    onClick={() => commitFacts(removeFact(factsRef.current, f))}
-                  >
-                    ×
-                  </button>
-                </span>
+                    onChange={() => setPrefOffer({ ...prefOffer, picked: prefOffer.picked.map((v, j) => (j === i ? !v : v)) })}
+                  />
+                  <span>{p}</span>
+                </label>
               ))}
+            </div>
+            <div className="plan-ask-bar">
+              <button type="button" className="go" disabled={busy || !prefOffer.picked.some(Boolean)} onClick={() => void settlePrefs(true)}>沿用所选并生成</button>
+              <button type="button" className="ghost" disabled={busy} onClick={() => void settlePrefs(false)}>都不用，直接生成</button>
             </div>
           </div>
         )}
@@ -1273,7 +1351,7 @@ export default function App() {
 
         {askItems.length > 0 && (
           <div className="plan-ask">
-            <div className="plan-ask-k">待确认 · 先选或先写，不会自动发送</div>
+            <div className="plan-ask-k">{trip ? '待确认 · 选完确认后更新当前行程' : '待确认 · 选完确认后直接生成行程'}</div>
             {askItems.map((item, i) => (
               <div key={item.question} className="plan-q">
                 <p>{i + 1}. {item.question}</p>
@@ -1299,7 +1377,7 @@ export default function App() {
                 />
               </div>
             ))}
-            <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。看完确认后再点提交，点错选项可再点一次取消。</p>
+            <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。点错选项可再点一次取消。</p>
             <div className="plan-ask-bar">
               <button
                 type="button"
@@ -1307,13 +1385,8 @@ export default function App() {
                 disabled={busy || planAnswers.some((a) => !String(a || '').trim())}
                 onClick={() => void submitPlanAnswers()}
               >
-                提交答复
+                {trip ? '确认并更新' : '确认并生成'}
               </button>
-              {canConfirm && (
-                <button type="button" className="ghost" disabled={busy} onClick={() => void confirmPage()}>
-                  跳过并出页
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -1383,7 +1456,7 @@ export default function App() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={(trip ? '可同时说改哪一天、加哪个点、补哪张图；图片/文本/zip 直接粘贴或拖进来' : planDraft ? '说要改哪一天，或点确认生成' : '先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天（图片/文本/zip 可直接拖进来）') + '\n回车发送，Shift+回车换行'}
+            placeholder={trip || planDraft ? '' : '先选人格，再说想去哪、玩几天\n回车发送，Shift+回车换行'}
             rows={4}
             onPaste={(e) => {
               const files = filesFromPaste(e)
@@ -1400,17 +1473,25 @@ export default function App() {
             }}
           />
           <div className="composer-bar">
-            <button type="button" className="ghost" onClick={() => void loadSeed()}>载入示例行程</button>
-            {canConfirm && (
+            <select
+              className="seed-pick"
+              value=""
+              disabled={busy}
+              title="载入示例行程"
+              onChange={(e) => { if (e.target.value) void loadSeed(e.target.value) }}
+            >
+              <option value="">载入示例行程</option>
+              {seedList.map((s, i) => (
+                <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>
+              ))}
+            </select>
+            {canConfirm && askItems.length === 0 && (
               <button type="button" className="go" disabled={busy} onClick={() => void confirmPage()}>
                 {busy ? '生成中' : '确认生成'}
               </button>
             )}
             <button type="submit" className="go" disabled={busy}>
-              {busy ? '生成中'
-                : attachments.some((a) => a.kind === 'image')
-                  ? (wantsVision(input, Boolean(trip)) ? '看图' : '贴图')
-                  : trip ? '发送' : planDraft ? '改计划' : '生成计划'}
+              {busy ? '生成中' : trip || planDraft ? '发送' : '生成计划'}
             </button>
           </div>
         </form>
@@ -1446,6 +1527,7 @@ export default function App() {
                 </button>
               </>
             )}
+            {import.meta.env.DEV && <button type="button" onClick={() => void saveAsSeed()}>存为示例</button>}
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
             <button type="button" onClick={() => void onImage()}>导出图片</button>
             <button type="button" className="primary" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
@@ -1453,6 +1535,14 @@ export default function App() {
         </div>
         <div className={`frame ${device}`}>
           <iframe ref={iframeRef} title="行程预览" srcDoc={previewDoc} sandbox="allow-scripts allow-same-origin allow-popups" />
+          {generating && (
+            <div className="page-loading" role="status" ref={loadingRef}>
+              <div className="page-loading-box">
+                <span className="page-loading-spin" aria-hidden="true" />
+                <p>行程正在生成，请稍后</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -1472,6 +1562,20 @@ export default function App() {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
+      {(authScreen || authSuccess) && (
+        <AccountDialog
+          screen={authScreen || 'login'}
+          success={authSuccess}
+          username={authUser}
+          error={authError}
+          busy={authBusy}
+          onClose={closeAuth}
+          onScreen={openAuth}
+          onSubmit={(input) => void submitAuth(input)}
+          onRequestCode={(input) => requestAuthCode(input)}
+          onSignOut={() => void signOut()}
+        />
+      )}
     </div>
   )
 }

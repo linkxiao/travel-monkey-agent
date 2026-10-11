@@ -3,12 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { handleChat } from './chat-proxy.mjs'
-import { handleRender, handleValidate, loadSeedTrip } from './viz.mjs'
+import { handleRender, handleValidate, listSeedTrips, loadSeedTrip } from './viz.mjs'
 import { skillStatus } from './skill-prompt.mjs'
 import { handlePhotoProxy } from './photos.mjs'
 import { handleResearch } from './research.mjs'
 import { handleUpload } from './uploads.mjs'
-import { handleAccount } from './accounts.mjs'
+import { handleAuth } from './users.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.join(__dirname, '..', 'dist')
@@ -54,8 +54,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/upload') {
     return handleUpload(req, res)
   }
-  if (url.pathname === '/api/account') {
-    return handleAccount(req, res)
+  if (url.pathname.startsWith('/api/auth')) {
+    return handleAuth(req, res)
   }
   if (url.pathname === '/travel-photo') {
     return handlePhotoProxy(req, res)
@@ -68,9 +68,14 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(skillStatus()))
     return
   }
+  if (url.pathname === '/seed/list.json') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(listSeedTrips()))
+    return
+  }
   if (url.pathname === '/seed/trip.json') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify(loadSeedTrip()))
+    res.end(JSON.stringify(loadSeedTrip(url.searchParams.get('id') || '')))
     return
   }
   if (url.pathname === '/seed/trip.html' && fs.existsSync(seedHtml)) {

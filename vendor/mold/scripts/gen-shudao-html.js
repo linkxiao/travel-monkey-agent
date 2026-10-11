@@ -44,7 +44,7 @@ function renderTrip(trip) {
     hotelLead: '按住的片区列经济 / 中档 / 高端三家不同店（店名+位置，参考不能代订）。对不上真店就不凑。',
   }, trip.ui || {});
   const css = baseCss + (ui.themeCss || '');
-  const preTrip = trip.preTrip || { weather: { summary: '', typhoon: '' }, packing: '', payment: '', apps: [], ticketTip: '' };
+  const preTrip = trip.preTrip || { weather: { summary: '', typhoon: '' }, transport: '', packing: '', payment: '', apps: [], ticketTip: '' };
   const apps = (preTrip.apps || []).map((a, i) => {
   const cls = i % 3 === 1 ? ' teal' : i % 3 === 2 ? ' sakura' : '';
   return `<span class="pill${cls}">${esc(a)}</span>`;
@@ -366,6 +366,14 @@ body{overflow-x:hidden}
   word-break:break-word;
 }
 .hero-dates{flex-wrap:wrap}
+.info-row:has(.typhoon-alert){grid-column:auto}
+.day-weekday{font-family:"Bebas Neue",sans-serif;font-size:28px;letter-spacing:.03em;line-height:1}
+.day-header .day-title-row{display:flex;align-items:center;flex-wrap:nowrap;gap:12px}
+.day-weekday{flex:0 0 auto}
+.day-when{display:flex;flex-direction:column;flex:0 0 auto;line-height:1.3;padding-left:12px;border-left:1px solid rgba(255,255,255,.25)}
+.day-when-week{font-size:13px;font-weight:700;color:rgba(255,255,255,.9)}
+.day-when-date{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.04em;color:rgba(255,255,255,.72)}
+.day-brief{margin-left:auto;min-width:0;max-width:62%;text-align:right;font-size:14px;font-weight:600;line-height:1.4;color:rgba(255,255,255,.9)}
 @media(max-width:720px){
   body{font-size:16px;line-height:1.7}
   .page-wrap{max-width:100%!important}
@@ -426,14 +434,10 @@ body{overflow-x:hidden}
   .overview-card{padding:12px 12px 11px}
   .day-header{padding:12px 14px 12px}
   .day-title-row{flex-wrap:wrap;gap:4px 10px}
-  .day-weekday{font-size:34px;flex:0 0 auto}
-  .day-date-inline{font-size:14px}
-  .day-theme{
-    flex:1 1 100%;
-    font-size:14px;
-    line-height:1.45;
-    margin-top:2px;
-  }
+  .day-weekday{font-size:26px;flex:0 0 auto}
+  .day-header .day-title-row{gap:10px}
+  .day-when{padding-left:10px}
+  .day-brief{font-size:13px;max-width:56%}
   .day-tips-banner,.day-alts{padding:10px 14px;font-size:14px;line-height:1.65}
   .day-alt-label{font-size:14px}
   .day-alt-sum{font-size:13px;line-height:1.55}
@@ -470,7 +474,7 @@ body{overflow-x:hidden}
 }
 @media(max-width:380px){
   .hero-title{font-size:24px!important}
-  .day-weekday{font-size:30px}
+  .day-weekday{font-size:26px}
   .slot-gallery{grid-template-columns:1fr}
   .gallery-item img{height:168px}
   .section,.map-section,.day-block,.checklist-wrap,.disclaimer-box{
@@ -519,6 +523,13 @@ body{overflow-x:hidden}
             <div class="info-label">${esc(ui.weatherLabel)}</div>
             <div class="info-text">${esc((preTrip.weather && preTrip.weather.summary) || '')}</div>
             <div class="typhoon-alert">⚠️ ${esc((preTrip.weather && preTrip.weather.typhoon) || '')}</div>
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-row-icon">🚇</div>
+          <div class="info-row-body">
+            <div class="info-label">交通出行</div>
+            <div class="info-text">${esc(preTrip.transport || '')}</div>
           </div>
         </div>
         <div class="info-row">
@@ -958,19 +969,16 @@ function pickSlots(slots, kinds) {
 }
 function renderTimeline() {
   var html = '';
-  var headerStyle = (trip.ui && trip.ui.dayHeaderStyle) || 'weekday';
   trip.days.forEach(function (day, di) {
-    var header;
-    if (headerStyle === 'day-date') {
-      header = '<div class="day-header"><div class="day-title-row">'
-        + '<div class="day-weekday">Day' + (di + 1) + '</div>'
-        + '<div class="day-date-inline">' + escapeHTML(prettyDotDate(day.date)) + '</div>'
-        + '<div class="day-theme">' + escapeHTML(day.theme) + '</div></div></div>';
-    } else {
-      header = '<div class="day-header"><div class="day-num">Day ' + (di + 1) + ' · ' + day.date + '</div>'
-        + '<div class="day-title-row"><div class="day-weekday">' + escapeHTML(day.weekday) + '</div>'
-        + '<div class="day-theme">' + escapeHTML(day.theme) + '</div></div></div>';
-    }
+    var brief = day.brief || day.theme || '';
+    var header = '<div class="day-header"><div class="day-title-row">'
+      + '<div class="day-weekday">Day' + (di + 1) + '</div>'
+      + '<div class="day-when">'
+      + (day.weekday ? '<span class="day-when-week">' + escapeHTML(day.weekday) + '</span>' : '')
+      + (day.date ? '<span class="day-when-date">' + escapeHTML(prettyDotDate(day.date)) + '</span>' : '')
+      + '</div>'
+      + (brief ? '<div class="day-brief">' + escapeHTML(brief) + '</div>' : '')
+      + '</div></div>';
     html += '<div class="day-block">' + header;
     (day.tips || []).forEach(function (tip) {
       html += '<div class="day-tips-banner">💡 ' + escapeHTML(tip) + '</div>';

@@ -6,8 +6,26 @@ import fs from 'node:fs'
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const vizRoot = path.resolve(__dirname, '..', 'vendor', 'mold')
-const { renderTrip } = require(path.join(vizRoot, 'scripts', 'gen-shudao-html.js'))
+const MOLD_FILE = path.join(vizRoot, 'scripts', 'gen-shudao-html.js')
+const MOLD_DEPS = [MOLD_FILE, ...['map.js', 'reminders.js'].map((f) => path.join(vizRoot, 'travel-plan-viz', 'assets', f))]
 const { validateTrip, validateAll } = require(path.join(vizRoot, 'travel-plan-viz', 'assets', 'validate.js'))
+
+// require 缓存跟进程走，dev 服务重启不清；模具文件改了就重新加载
+let moldStamp = ''
+let moldRender = null
+function renderTrip(trip) {
+  const stamp = MOLD_DEPS.map((f) => {
+    try { return fs.statSync(f).mtimeMs } catch { return 0 }
+  }).join('|')
+  if (!moldRender || stamp !== moldStamp) {
+    for (const key of Object.keys(require.cache)) {
+      if (key.startsWith(vizRoot + path.sep)) delete require.cache[key]
+    }
+    moldRender = require(MOLD_FILE).renderTrip
+    moldStamp = stamp
+  }
+  return moldRender(trip)
+}
 import { enrichTripPhotos } from './photos.mjs'
 import { applyThemeToTrip } from './themes.mjs'
 import { enrichTripTransport } from './transport.mjs'
@@ -64,10 +82,55 @@ function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
+const TRANSPORT_TIP = '市内以地铁 / 打车为主；热门时段预留排队与堵车时间。'
+
+const SPARE_REMINDERS = [
+  { item: '确认往返交通与住宿订单', leadDays: 14, key: /交通|车票|机票|高铁|住宿|酒店|民宿/ },
+  { item: '热门景点预约门票', leadDays: 7, key: /门票|预约|购票/ },
+  { item: '下载离线地图并保存订单截图', leadDays: 3, key: /离线|地图|截图/ },
+  { item: '查看目的地天气与交通管制', leadDays: 2, key: /天气|管制|预警/ },
+  { item: '检查身份证件、充电宝与常用药', leadDays: 1, key: /证件|身份证|充电|药/ },
+]
+
+function evenReminders(list) {
+  if (list.length % 2 === 0) return list
+  const said = list.map((r) => r.item).join('\n')
+  const spare = SPARE_REMINDERS.find((r) => !r.key.test(said))
+  if (spare) return [...list, { item: spare.item, leadDays: spare.leadDays }]
+  return list.length > 1 ? list.slice(0, -1) : [...list, { item: SPARE_REMINDERS[4].item, leadDays: 1 }]
+}
+
+const BRIEF_MAX = 20
+const PLACEHOLDER_THEME = /^(第\s*\d+\s*天|d\s*\d+|day\s*\d+)$/i
+const FILLER_SPOT = /^(午休|茶歇|休息|自由活动|待定)/
+
+function clipText(text, max) {
+  const chars = [...text]
+  return chars.length <= max ? text : chars.slice(0, max - 1).join('') + '…'
+}
+
+// 日标题右侧一句话：优先用当天主题，主题只是「第N天」时用景点名拼
+export function dayBrief(day) {
+  const theme = String(day.theme || '').trim()
+  if (theme && !PLACEHOLDER_THEME.test(theme) && [...theme].length >= 4) return clipText(theme, BRIEF_MAX)
+  const spots = (day.slots || [])
+    .filter((s) => s && s.kind === 'spot' && s.name && !FILLER_SPOT.test(s.name))
+    .map((s) => String(s.name).trim())
+  let line = ''
+  for (const name of spots) {
+    const next = line ? `${line}·${name}` : name
+    if ([...next].length > BRIEF_MAX) break
+    line = next
+  }
+  if (!line && spots[0]) line = clipText(spots[0], BRIEF_MAX)
+  return line || clipText(theme, BRIEF_MAX)
+}
+
 function normalizePreTrip(raw) {
   if (typeof raw === 'string' && raw.trim()) {
     return {
       weather: { summary: '出发前关注当地天气。', typhoon: '以官方预警为准。' },
+      transport: TRANSPORT_TIP,
       packing: raw.trim(),
       payment: '微信 / 支付宝；小店备少量现金。',
       apps: ['高德地图', '航旅纵横'],
@@ -82,6 +145,7 @@ function normalizePreTrip(raw) {
   }
   pre.weather.summary = pre.weather.summary || '出发前关注当地天气。'
   pre.weather.typhoon = pre.weather.typhoon || '以官方预警为准。'
+  pre.transport = typeof pre.transport === 'string' && pre.transport ? pre.transport : TRANSPORT_TIP
   pre.packing = typeof pre.packing === 'string' && pre.packing ? pre.packing : '舒适鞋 + 外套，按季节增减。'
   pre.payment = typeof pre.payment === 'string' && pre.payment ? pre.payment : '微信 / 支付宝；小店备少量现金。'
   pre.apps = Array.isArray(pre.apps) && pre.apps.length ? pre.apps.map(String) : ['高德地图', '航旅纵横']
@@ -505,7 +569,9 @@ function normalizeTrip(trip) {
   if (!trip || typeof trip !== 'object') throw new Error('trip 不是对象')
   const out = JSON.parse(JSON.stringify(trip))
   out.title = out.title || '未命名行程'
-  out.startDate = out.startDate || new Date().toISOString().slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(out.startDate || '')) || Number.isNaN(Date.parse(`${out.startDate}T00:00:00Z`))) {
+    out.startDate = new Date().toISOString().slice(0, 10)
+  }
   out.disclaimer = out.disclaimer && String(out.disclaimer).length >= 20 ? out.disclaimer : DEFAULT_DISCLAIMER
   out.tips = Array.isArray(out.tips) ? out.tips.filter(Boolean).map(String) : []
   if (!out.tips.length) {
@@ -528,6 +594,7 @@ function normalizeTrip(trip) {
     ensureDaySlots(day, di === out.days.length - 1 && out.days.length > 1, fallback)
     ensureDayDining(day)
   })
+  out.days.forEach((day) => { day.brief = dayBrief(day) })
   applyPersona(out)
   out.days.forEach((day) => ensureDayCraft(day, out.persona))
   if (out.persona === 'stay') {
@@ -551,6 +618,7 @@ function normalizeTrip(trip) {
           { item: '出发前看天气与交通管制', leadDays: 3 },
         ]
   }
+  out.reminders = evenReminders(out.reminders)
 
   out.hotelAreas = out.hotelAreas.filter((area) => area && (area.area || area.name))
   out.hotelAreas.forEach((area) => {
@@ -618,8 +686,54 @@ function normalizeTrip(trip) {
   return out
 }
 
-export function loadSeedTrip() {
-  return JSON.parse(fs.readFileSync(SEED_JSON, 'utf8'))
+const SEED_DIR = path.resolve(__dirname, '..', 'seed', 'trips')
+
+function seedFiles() {
+  const extra = fs.existsSync(SEED_DIR)
+    ? fs.readdirSync(SEED_DIR).filter((f) => f.endsWith('.json')).sort()
+      .map((f) => ({ id: f.replace(/\.json$/, ''), file: path.join(SEED_DIR, f) }))
+    : []
+  return [{ id: 'shudao', file: SEED_JSON }, ...extra]
+}
+
+export function listSeedTrips() {
+  return seedFiles().map(({ id, file }) => {
+    try {
+      return { id, title: String(JSON.parse(fs.readFileSync(file, 'utf8')).title || id) }
+    } catch {
+      return null
+    }
+  }).filter(Boolean)
+}
+
+// 把当前行程存成示例；同名行程覆盖原文件，否则按顺序新编号
+export function saveSeedTrip(raw) {
+  const trip = raw && typeof raw === 'object' ? JSON.parse(JSON.stringify(raw)) : null
+  if (!trip || !trip.title || !Array.isArray(trip.days) || !trip.days.length) throw new Error('当前没有完整行程')
+  if (trip.ui && typeof trip.ui === 'object') delete trip.ui.themeCss
+  fs.mkdirSync(SEED_DIR, { recursive: true })
+  const files = seedFiles()
+  const same = listSeedTrips().find((s) => s.title === trip.title)
+  const id = same && same.id !== files[0].id ? same.id : String(files.length + 1).padStart(2, '0')
+  fs.writeFileSync(path.join(SEED_DIR, `${id}.json`), JSON.stringify(trip, null, 2) + '\n')
+  return { id, title: trip.title, order: listSeedTrips().findIndex((s) => s.id === id) + 1 }
+}
+
+export async function handleSeedSave(req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  try {
+    const body = await readJsonBody(req)
+    res.end(JSON.stringify(saveSeedTrip(body.trip)))
+  } catch (err) {
+    res.statusCode = 400
+    res.end(JSON.stringify({ error: err.message || String(err) }))
+  }
+}
+
+export function loadSeedTrip(id) {
+  const files = seedFiles()
+  const hit = files.find((s) => s.id === id) || files[0]
+  return JSON.parse(fs.readFileSync(hit.file, 'utf8'))
 }
 
 export async function runSkillPage(raw, opts = {}) {

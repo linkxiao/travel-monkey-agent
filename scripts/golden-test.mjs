@@ -2,24 +2,26 @@
 // 跑法：npm run golden
 import assert from 'node:assert'
 import fs from 'node:fs'
-import { normalizeTrip } from '../server/viz.mjs'
+import { createRequire } from 'node:module'
+import { dayBrief, normalizeTrip } from '../server/viz.mjs'
 import { researchQuery } from '../server/research.mjs'
 import { resolveTargets } from '../src/lib/target.ts'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, photoOutcome, stripEditClaim, wantsPhotos, wantsTripEdit } from '../src/lib/trip.ts'
+import { buildRouteMessages, carryLine, countPeople, isNewTask, localTurn, parseTurn, planPrefs, portablePrefs, statedDays, tripHead, tripNames } from '../src/lib/route.ts'
 import { mentionedDays } from '../src/lib/target.ts'
 import zlib from 'node:zlib'
 import { wantsVision } from '../src/lib/attach.ts'
 import { readZip } from '../src/lib/zip.ts'
-import { avoidHits, extractFacts, factsBlock, learnFromModel, learnFromUser, mergeFacts, modelDrops, normalizeModelFacts, planAvoidHits, removeFact, takeMemo } from '../src/lib/memory.ts'
-import { buildChatMessages, buildPlanMessages, splitWindow, userPack } from '../src/lib/context.ts'
-import { isEmptyProfile, mergeProfile, profileBlock, proposeProfile, removeProfilePart } from '../src/lib/profile.ts'
+import { buildChatMessages, buildFillMessages, buildPlanMessages, splitWindow, userPack } from '../src/lib/context.ts'
 import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
 import { enrichTripTransport } from '../server/transport.mjs'
 import { qualityChecklist } from '../server/quality.mjs'
 import { hoursIssues, parseOpenText } from '../server/hours.mjs'
-import { getAccount, normalizeAccountCode, putAccount } from '../server/accounts.mjs'
+import net from 'node:net'
+import { loginUser, normalizeEmail, registerUser, requestVerify, sessionUser } from '../server/users.mjs'
+import { sendMail } from '../server/deliver.mjs'
 import { todayAdvice } from '../src/lib/today.ts'
 import os from 'node:os'
 import path from 'node:path'
@@ -66,6 +68,47 @@ const dayWith = (stay) => ({
   ok('access 结构化', t.hotelAreas[0].options[0].access?.note?.includes('适老'))
   ok('预算信封', t.budget?.tiers?.length === 3 && /晚参考/.test(t.budget.tiers[0].total))
   ok('旅居 tips', t.tips.some((x) => String(x).includes('电梯')))
+}
+
+// 页面版式：待办与行前须知成对排齐，日标题 Day 大写、星期日期小字
+{
+  const days = ['甲宾馆', '甲宾馆'].map(dayWith)
+  const odd = normalizeTrip({ ...BASE, days, reminders: [{ item: '订包车', leadDays: 7 }, { item: '订门票', leadDays: 5 }, { item: '订住宿', leadDays: 9 }] })
+  ok('待办：奇数条补成偶数，补的不和已有重复', odd.reminders.length === 4 && !/住宿/.test(odd.reminders[3].item))
+  const even = normalizeTrip({ ...BASE, days, reminders: [{ item: '订包车', leadDays: 7 }, { item: '订门票', leadDays: 5 }] })
+  ok('待办：已是偶数不动', even.reminders.length === 2)
+  ok('待办：默认清单也是偶数', normalizeTrip({ ...BASE, days }).reminders.length % 2 === 0)
+  ok('行前须知：交通出行有兜底', typeof odd.preTrip.transport === 'string' && odd.preTrip.transport.length > 0)
+  const { renderTrip } = createRequire(import.meta.url)('../vendor/mold/scripts/gen-shudao-html.js')
+  const html = renderTrip(odd)
+  ok('行前须知：6 项两列排齐', (html.match(/class="info-row"/g) || []).length === 6)
+  const timeline = html.split('function renderTimeline')[1] || ''
+  ok('日标题：左 Day，右侧星期在上日期在下，再右是当日概述', /day-weekday">Day' \+ \(di \+ 1\)/.test(timeline) && /day-when-week[\s\S]*day-when-date[\s\S]*day-brief/.test(timeline) && !/day-num/.test(timeline))
+  const spotDay = (theme, names) => ({ theme, slots: [{ kind: 'route', name: '甲地→乙地' }, ...names.map((name) => ({ kind: 'spot', name }))] })
+  ok('概述：主题像样就用主题', dayBrief(spotDay('古寺穿越与山脊徒步', ['甲寺'])) === '古寺穿越与山脊徒步')
+  ok('概述：主题只是第N天时用景点名拼，跳过午休', dayBrief(spotDay('第 2 天', ['甲寺', '午休', '乙寺', '丙寺'])) === '甲寺·乙寺·丙寺')
+  ok('概述：不超过 20 字，不把景点名切半', [...dayBrief(spotDay('D3', ['甲乙丙丁戊己庚', '子丑寅卯辰巳午', '天地玄黄宇宙洪']))].length <= 20 && dayBrief(spotDay('D3', ['甲乙丙丁戊己庚', '子丑寅卯辰巳午', '天地玄黄宇宙洪'])) === '甲乙丙丁戊己庚·子丑寅卯辰巳午')
+  ok('概述：长主题截到 20 字', [...dayBrief(spotDay('一二三四五六七八九十一二三四五六七八九十一二', []))].length === 20)
+  ok('概述：normalize 每天都带上', odd.days.every((d) => typeof d.brief === 'string' && [...d.brief].length <= 20))
+}
+
+// 换肤：每套皮肤的字色和底色都拉得开
+{
+  const { THEMES, contrast, themeCss, themePalette } = await import('../server/themes.mjs')
+  const low = []
+  for (const theme of THEMES) {
+    const p = themePalette(theme)
+    for (const bg of [p.card, p.raise]) {
+      for (const [key, min] of [['ink', 7], ['mid', 4.5], ['sakura', 4.5], ['tealInk', 4.5], ['deepInk', 4.5]]) {
+        if (contrast(p[key], bg) < min) low.push(`${theme.id}.${key}`)
+      }
+    }
+    if (contrast('#ffffff', p.deep) < 7 || contrast(p.deepAccent, p.deep) < 4.5) low.push(`${theme.id}.deep`)
+  }
+  ok('换肤：正文、次要字、强调色在卡片和内块上都够对比度', low.length === 0)
+  const css = themeCss(THEMES.find((t) => t.id === 'coast'))
+  ok('换肤：深色底（封面、日标题、待办）上的字固定用浅色', /\.hero-title,\.day-weekday,\.checklist-title\{color:#fff!important\}/.test(css) && /\.day-when-week,\.day-brief\{color:rgba\(255,255,255/.test(css) && !/\.hero-title[^{]*\{color:var\(--ink\)/.test(css))
+  ok('换肤：模板里写死的深色字跟着皮肤走', /\.overview-day[^{]*\{color:var\(--ink\)!important\}/.test(css) && /\.craft-body[^{]*\{color:var\(--ink-mid\)!important\}/.test(css))
 }
 
 // 2. 三餐：软硬标签 + 旅居硬菜建议
@@ -391,49 +434,8 @@ const dayWith = (stay) => ({
 }
 
 {
-  const has = (facts, key, value) => facts.some((f) => f.key === key && f.value === value)
-
-  const t1 = extractFacts('我膝盖不好、不吃辣，6个人去西安，国庆5天4晚，从深圳出发，没车')
-  ok('约束：身体/忌口/人数一次抽齐', has(t1, 'body', '膝盖不好') && has(t1, 'diet', '不吃辣') && has(t1, 'party', '6人'))
-  ok('约束：日期/天数/出发地/交通', has(t1, 'dates', '国庆') && has(t1, 'length', '5天4晚') && has(t1, 'origin', '从深圳出发') && has(t1, 'transport', '没车'))
-
-  const t2 = extractFacts('一家三口带老人，海鲜过敏，酒店要有电梯，人均3000元')
-  ok('约束：家庭构成/过敏/住宿/人均', has(t2, 'party', '一家三口') && has(t2, 'party', '带老人') && has(t2, 'diet', '海鲜过敏') && has(t2, 'stay', '电梯') && has(t2, 'budget', '人均3000元'))
-
-  ok('约束：问句不当约束', extractFacts('酒店有电梯吗？要不要自驾？').length === 0)
-  ok('约束：第N天/前两天不当天数', !extractFacts('第3天改轻松点，前两天别太赶').some((f) => f.key === 'length'))
-  ok('约束：日期区间', has(extractFacts('10月3日到10月8日去'), 'dates', '10月3日—10月8日'))
-  ok('约束：改行程的话不误抽', extractFacts('D2第2格改成翠华山').length === 0)
-
-  // 验收：第 1 轮说的三条，第 3 轮改天数后还在
-  let board = mergeFacts([], extractFacts('膝盖不好、不吃辣、6 个人，去成都'))
-  board = mergeFacts(board, extractFacts('偏人文和美食'))
-  board = mergeFacts(board, extractFacts('改成4天3晚'))
-  const block = factsBlock(board)
-  ok('验收：三轮后硬约束全在注入块里', /膝盖不好/.test(block) && /不吃辣/.test(block) && /6人/.test(block) && /4天3晚/.test(block))
-
-  board = mergeFacts(board, extractFacts('改成5天'))
-  ok('天数单值：新的顶掉旧的', board.filter((f) => f.key === 'length').length === 1 && has(board, 'length', '5天'))
-  board = mergeFacts(board, extractFacts('又加了两个朋友，8个人'))
-  ok('人数单值：8人顶掉6人', board.filter((f) => f.key === 'party').map((f) => f.value).join() === '8人')
-  ok('人数换新时带老人之类并存', mergeFacts(extractFacts('带老人，6个人'), extractFacts('8个人')).map((f) => f.value).sort().join() === '8人,带老人')
-  board = mergeFacts(board, extractFacts('不吃辣'))
-  ok('同一条不重复记', board.filter((f) => f.key === 'diet').length === 1)
-  ok('删掉一条后注入块里没了', !/不吃辣/.test(factsBlock(removeFact(board, { key: 'diet', value: '不吃辣' }))))
-  ok('没约束时不注入', factsBlock([]) === '')
-  ok('注入块按类别分行', /^- 同行：8人$/m.test(factsBlock(board)) && /^- 忌口：不吃辣$/m.test(factsBlock(board)))
-
-  const mf = normalizeModelFacts([{ k: '忌口', v: '不吃香菜' }, { key: 'body', value: '晕车' }, { k: '心情', v: '开心' }, 'x', { k: '同行', v: '' }])
-  ok('模型 facts：认中英文键、丢未知类别和空值', mf.length === 2 && has(mf, 'diet', '不吃香菜') && has(mf, 'body', '晕车') && mf.every((f) => f.source === 'model'))
-  const env = extractEnvelope('{"reply":"好","changes":[],"facts":[{"k":"预算","v":"预算5000"}]}')
-  ok('改表回复带出 facts', env && env.facts.length === 1 && normalizeModelFacts(env.facts)[0].key === 'budget')
-
-  const big = mergeFacts([], Array.from({ length: 20 }, (_, i) => ({ key: 'stay', value: `要求${i}号`, source: 'user', at: i })))
-  ok('约束板封顶 16 条', big.length === 16 && big[15].value === '要求19号')
-
-  const empty = { trip: null, planDraft: '', bubbles: [], facts: [] }
+  const empty = { trip: null, planDraft: '', bubbles: [] }
   ok('会话：空会话不存', isEmptySession(empty) && sessionStage(empty) === 'empty')
-  ok('会话：只有约束也算有内容', !isEmptySession({ ...empty, facts: t1 }))
   ok('会话：有大纲是 plan，有行程是 page', sessionStage({ ...empty, planDraft: 'D1…' }) === 'plan' && sessionStage({ ...empty, trip: { title: '西安' } }) === 'page')
   ok('会话标题：优先行程名，其次第一句用户话', sessionTitle({ trip: { title: '西安六日' }, bubbles: [] }) === '西安六日'
     && sessionTitle({ trip: null, bubbles: [{ role: 'assistant', text: '你好' }, { role: 'user', text: '成都  4天\n两人' }] }) === '成都 4天 两人'
@@ -441,72 +443,64 @@ const dayWith = (stay) => ({
   ok('会话 id 不撞', newSessionId() !== newSessionId())
 }
 
-// 多轮脚本：模拟 App 的一轮（先记约束，再拼消息），逐轮核对发给模型的内容
+// 任务判断：目的地或人数变了是新任务，不带历史；其余都是同一任务
 {
-  const has = (facts, key, value) => facts.some((f) => f.key === key && f.value === value)
+  const turn = (taskPlaces, taskPeople, nowPlaces, nowPeople) => ({ task: { places: taskPlaces, people: taskPeople }, now: { places: nowPlaces, people: nowPeople } })
+  ok('任务：换了一个目的地是新任务', isNewTask(turn(['甲景点'], 3, ['乙景点'], null), '去乙景点玩'))
+  ok('任务：城市和城市里的景点不算同一个目的地', isNewTask(turn(['丙城'], null, ['甲景点'], null), '去甲景点'))
+  ok('任务：多加一个目的地也是新任务', isNewTask(turn(['甲景点'], null, ['甲景点', '乙景点'], null), '甲景点和乙景点都去'))
+  ok('任务：同一组目的地只是写法、顺序不同仍是同一任务', !isNewTask(turn(['甲景点', '乙景点'], 3, ['「乙景点」', '甲景点 '], null), '还是甲景点和乙景点'))
+  ok('任务：人数变了是新任务', isNewTask(turn(['甲景点'], 3, [], 2), '这次两个人'))
+  ok('任务：这句没提目的地和人数就是同一任务', !isNewTask(turn(['甲景点'], 3, [], null), '晚饭换清淡一点'))
+  ok('任务：认不出当前任务的目的地时不算变', !isNewTask(turn([], null, ['乙景点'], null), '去乙景点'))
+  ok('任务：指着某一天某一格说话一定是同一任务', !isNewTask(turn(['甲景点'], 3, ['乙景点'], 2), 'D2第3格换成乙景点'))
+  ok('人数：常见说法都认', countPeople('一家三口') === 3 && countPeople('两大一小') === 3 && countPeople('6个人去') === 6 && countPeople('两人轻装') === 2
+    && countPeople('人均3000元') === null && countPeople('晚饭换一家') === null)
+  ok('天数：第N天不算天数', statedDays('改成两日游') === 2 && statedDays('第3天轻松点') === null && statedDays('5天4晚') === 5)
+  const parsed = parseTurn('{"task":{"places":["甲景点"],"people":3},"now":{"places":["乙景点"],"people":"x"},"action":"edit","prefs":["不吃辣","膝盖不好","不吃辣"]}')
+  ok('解析：目的地和人数照收，认不出的人数当没说', parsed?.task.people === 3 && parsed.now.people === null && parsed.now.places.join() === '乙景点')
+  ok('解析：偏好去重', parsed?.prefs.join() === '不吃辣,膝盖不好')
+  ok('解析：回坏了不认', parseTurn('好的') === null && parseTurn('{"action":"whatever"}') === null)
+  const off = localTurn('一家三口去甲景点', '这次两个人去', 3)
+  ok('兜底：只比人数，目的地当作没变', off.source === 'local' && isNewTask(off, '这次两个人去') && !isNewTask(localTurn('一家三口去甲景点', '去乙景点', 3), '去乙景点'))
+  ok('兜底：同一任务里分提问、换图、改天数、改行程', localTurn('', '这天累不累？', 3).action === 'ask' && localTurn('', 'D1的图换一张', 3).action === 'photos'
+    && localTurn('', '改成两日游', 3).action === 'replan' && localTurn('', '晚饭换清淡一点', 3).action === 'edit')
+  const oldTrip = { days: [{ slots: [{ name: '市区→甲山口→乙寺山下' }, { name: '乙寺' }, { name: '丙寺' }], dining: [{ place: '丁家小馆（老街）' }] }], hotelAreas: [{ area: '戊镇', options: [{ name: '乙寺农家宿舍' }] }] }
+  const names = ['甲山', ...tripNames(oldTrip)]
+  const said = ['两晚住甲山', '一晚乙寺、一晚戊镇', '包一辆7座车', '先三寺穿越', '晚上住乙寺农家宿舍', '不吃辣', '膝盖不好少爬坡', '住宿要安静', '带着老人']
+  ok('偏好：地名店名、几晚先后、车型同行都不沿用', portablePrefs(said, names).join() === '不吃辣,膝盖不好少爬坡,住宿要安静')
+  const scope = (taskPeople, nowPeople, prefs) => ({ task: { places: ['甲山'], people: taskPeople }, now: { places: ['己城'], people: nowPeople }, prefs })
+  ok('偏好：筛完没剩就不问，直接生成', planPrefs(scope(6, 2, ['两晚住甲山', '包一辆7座车', '先三寺穿越']), names).mode === 'none')
+  ok('偏好：人数没变直接沿用，不打断', planPrefs(scope(2, 2, ['不吃辣']), names).mode === 'carry' && planPrefs(scope(2, null, ['不吃辣']), names).mode === 'carry')
+  ok('偏好：人数变了才问', planPrefs(scope(6, 2, ['不吃辣', '两晚住甲山']), names).mode === 'ask' && planPrefs(scope(6, 2, ['不吃辣', '两晚住甲山']), names).prefs.join() === '不吃辣')
+  ok('沿用偏好写成一句用户原话', carryLine(['不吃辣', '少走路']) === '沿用上一趟的偏好：不吃辣；少走路' && carryLine([]) === '')
+  const routeMsg = buildRouteMessages({ opening: '一家三口去甲景点', head: tripHead({ title: '甲景点三日', days: [{ slots: [{ name: '甲' }] }] }), said: ['不吃辣'], text: '去乙景点' })[0].content
+  ok('分流消息：带任务开头、行程概要、之前说过的话和这一句', /任务开头那句：一家三口去甲景点/.test(routeMsg) && /1 天/.test(routeMsg) && /- 不吃辣/.test(routeMsg) && /用户这句：去乙景点/.test(routeMsg))
+}
+
+// 多轮脚本：同一任务按现有窗口和压缩带历史；新任务不带历史
+{
   const flat = (msgs) => msgs.map((m) => m.content).join('\n')
-  const session = () => ({ facts: [], bubbles: [] })
+  const session = () => ({ bubbles: [] })
   const say = (s, text, reply = '好的。') => {
-    s.facts = learnFromUser(s.facts, text)
     s.bubbles.push({ role: 'user', text }, { role: 'assistant', text: reply })
   }
-  const planMsgs = (s, text) => buildPlanMessages({ brief: '', facts: learnFromUser(s.facts, text), bubbles: s.bubbles, planDraft: 'D1 成都 宽窄巷子', text })
-  const chatMsgs = (s, text, limit = 4) => buildChatMessages({ facts: s.facts, digest: '（摘要）', bubbles: s.bubbles, extra: [{ role: 'user', text }], limit })
+  const planMsgs = (s, text) => buildPlanMessages({ brief: '', bubbles: s.bubbles, planDraft: 'D1 成都 宽窄巷子', text })
+  const chatMsgs = (s, text, limit = 4) => buildChatMessages({ digest: '（摘要）', bubbles: s.bubbles, extra: [{ role: 'user', text }], limit })
 
-  // 场景 1：软偏好不在约束板里，靠用户原话带到后面
   const s1 = session()
   say(s1, '膝盖不好、不吃辣、6 个人，去成都', 'D1 成都 …')
   say(s1, '偏人文和美食，想拍一次日出', 'D1 成都 …')
   const p1 = flat(planMsgs(s1, '改成4天3晚'))
-  ok('多轮：第3轮出大纲带着硬约束', /膝盖不好/.test(p1) && /不吃辣/.test(p1) && /6人/.test(p1) && /4天3晚/.test(p1))
-  ok('多轮：第3轮出大纲带着软偏好原话', /偏人文和美食，想拍一次日出/.test(p1))
-  ok('多轮：本句不在「之前说过的话」里重复', (p1.match(/改成4天3晚/g) || []).length === 1)
+  ok('同一任务：出大纲带着之前的用户原话', /膝盖不好、不吃辣、6 个人，去成都/.test(p1) && /偏人文和美食，想拍一次日出/.test(p1))
+  ok('同一任务：本句不在「之前说过的话」里重复', (p1.match(/改成4天3晚/g) || []).length === 1)
+  ok('上下文不再注入约束和画像', !/本趟硬约束|跨行程画像/.test(p1))
+  ok('新任务：出大纲只有这一句', buildPlanMessages({ brief: '', bubbles: [], planDraft: '', text: '去乙景点' }).length === 1)
+  ok('新任务：出页不带旧对话', !/膝盖不好/.test(flat(buildFillMessages({ brief: '', bubbles: [], plan: 'D1 乙景点' }))))
 
-  // 场景 2：否决清单
-  const s2 = session()
-  say(s2, '成都3天，不去熊猫基地，人太多')
-  ok('否决：记下不去', has(s2.facts, 'avoid', '熊猫基地') && /- 不去：熊猫基地（不要再排进行程）/.test(factsBlock(s2.facts)))
-  const tripWith = (name) => ({ days: [{ slots: [{ name: '宽窄巷子' }, { name }], dining: [{ place: '陈麻婆豆腐' }] }] })
-  ok('否决：出页后本机查得到又排进来的点', avoidHits(tripWith('成都大熊猫繁育研究基地'), s2.facts).join() === '熊猫基地'
-    && avoidHits(tripWith('武侯祠'), s2.facts).length === 0)
-  ok('否决：大纲按天行里出现才算，复述「不去」不算', planAvoidHits('D1 成都：熊猫基地 / 锦里', s2.facts).length === 1
-    && planAvoidHits('D1 成都：宽窄巷子 / 成都大熊猫繁育研究基地 / 锦里', s2.facts).length === 1
-    && planAvoidHits('D1 成都：宽窄巷子 / 锦里 / 住春熙路一带', s2.facts).length === 0
-    && planAvoidHits('已按你说的不去熊猫基地\nD1 成都：武侯祠 / 锦里', s2.facts).length === 0)
-  say(s2, '还是去熊猫基地吧，孩子想看')
-  ok('否决：改口「还是去」就撤掉', !s2.facts.some((f) => f.key === 'avoid'))
-  say(s2, '一定要去都江堰')
-  say(s2, '算了，都江堰不去了，去掉都江堰')
-  ok('必去与不去互斥：后说的赢', has(s2.facts, 'avoid', '都江堰') && !has(s2.facts, 'must', '都江堰'))
-  ok('否决：「去掉午休」「删掉D2第3格」「不想去太远的地方」不当地点',
-    extractFacts('去掉午休，删掉D2第3格，不想去太远的地方').filter((f) => f.key === 'avoid').length === 0)
-
-  // 场景 3：改口撤约束
-  const s3 = session()
-  say(s3, '带老人，6个人，不吃辣，酒店要电梯')
-  say(s3, '其实能吃辣了')
-  ok('改口：能吃辣了 → 撤掉不吃辣', !s3.facts.some((f) => f.key === 'diet'))
-  say(s3, '老人不去了')
-  ok('改口：老人不去了 → 撤掉带老人，人数保留', !has(s3.facts, 'party', '带老人') && has(s3.facts, 'party', '6人'))
-  say(s3, '不带老人，也不需要电梯')
-  ok('改口：「不带老人」「不需要电梯」不会反被记成约束', !has(s3.facts, 'party', '带老人') && !s3.facts.some((f) => f.key === 'stay'))
-  ok('改口：「不能吃辣」不是改口', learnFromUser(learnFromUser([], '不吃辣'), '我不能吃辣').some((f) => f.key === 'diet'))
-
-  // 场景 4：模型补抽（出大纲 / 聊天回复末尾的「记下：」行）
-  const memo = takeMemo('D1 成都：武侯祠 / 锦里\n待确认：…\n记下：忌口=不吃香菜；不去=春熙路；作废=同行:带老人')
-  ok('记下行：从显示里去掉', !/记下/.test(memo.text) && /D1 成都/.test(memo.text))
-  ok('记下行：新约束与作废都认', has(memo.facts, 'diet', '不吃香菜') && has(memo.facts, 'avoid', '春熙路') && memo.drops.length === 1 && memo.drops[0].key === 'party')
-  ok('记下行：作废生效', !has(learnFromModel(learnFromUser([], '带老人'), memo), 'party', '带老人'))
-  ok('改表 facts 支持 drop', modelDrops([{ k: '忌口', v: '不吃辣', drop: true }, { k: '忌口', v: '不吃香菜' }]).length === 1)
-
-  // 场景 5：附件里的备注、点选答复
-  ok('附件备注也抽', has(learnFromUser([], '看看这个\n附件内容：忌口：不吃辣，从深圳出发'), 'diet', '不吃辣'))
   const answered = '对以下问题的答复（按选项写入，不要再追问同一批）：\n1. 要不要去掉锦里，换成文殊院\n→ 保留锦里\n2. 住宿要连住吗\n→ A.连住'
-  const fromAns = learnFromUser(learnFromUser([], '不去锦里'), answered)
-  ok('点选答复：只看用户选的，不被模型问句带偏', !has(fromAns, 'avoid', '锦里') && has(fromAns, 'stay', '连住'))
   ok('点选答复：原话包里只留选项', userPack([{ role: 'user', text: answered }]).join() === '点选：保留锦里；A.连住')
 
-  // 场景 6：出页后长对话，窗口外有本机摘要，长度不随轮数涨
   const s6 = session()
   say(s6, '晚饭想吃那家陈麻婆豆腐总店')
   s6.bubbles.push({ role: 'user', text: 'D2第2格改成文殊院' }, { role: 'assistant', text: '已写入页面：D2 第2格 → 文殊院' })
@@ -576,49 +570,9 @@ const dayWith = (stay) => ({
   ok('质检：程序补上的规划条和住宿注记不再报缺', !genericIssues.some((x) => /缺负荷|缺雨天|缺停车|缺适老/.test(x)))
 }
 
-// 8. 跨行程画像：只收长期项，注入后可删
-{
-  const fact = (key, value) => ({ key, value, source: 'user', at: 1 })
-  const offer = proposeProfile({
-    persona: 'stay',
-    facts: [
-      fact('diet', '不吃辣'),
-      fact('stay', '电梯'),
-      fact('stay', '经济型'),
-      fact('dates', '10月1日'),
-      fact('length', '6天'),
-      fact('avoid', '熊猫基地'),
-      fact('must', '都江堰'),
-      fact('origin', '深圳'),
-      fact('party', '6人'),
-    ],
-    userLines: ['从深圳出发，6天', '不去熊猫基地', '我住在成都'],
-  })
-  ok('画像：人格、忌口、档位、常住', offer.persona === 'stay' && offer.diet.join() === '不吃辣' && offer.tier === '经济' && offer.home === '成都')
-  ok('画像：一次性约束不进去', !/熊猫|都江堰|6天|10月|电梯|深圳/.test(JSON.stringify(offer)))
-  const block = profileBlock(offer)
-  ok('画像：注入块只含长期项', /人格：旅居/.test(block) && /忌口：不吃辣/.test(block) && /住宿档位：经济/.test(block) && /常住：成都/.test(block) && !/熊猫基地|6天|电梯/.test(block))
-  const kept = mergeProfile(offer, proposeProfile({ persona: '', facts: [], userLines: [] }))
-  ok('画像：这趟没再提就不冲掉已记住的', kept.persona === 'stay' && kept.home === '成都')
-  const dropped = removeProfilePart(removeProfilePart(offer, 'diet', '不吃辣'), 'persona')
-  ok('画像：删掉后不再注入', isEmptyProfile({ ...dropped, tier: '', home: '' }) && !/旅居|不吃辣/.test(profileBlock({ ...dropped, tier: '', home: '' })))
-  const msgs = buildPlanMessages({ facts: [], bubbles: [], text: '去西安', profile: offer })
-  ok('画像：新行程开场带上', msgs[0].content.includes('跨行程画像') && msgs[0].content.includes('常住：成都'))
-  ok('画像：没有画像就不占消息', buildPlanMessages({ facts: [], bubbles: [], text: '去西安' })[0].content === '去西安')
-}
-
 // 9. 通用规则：账号隔离、当日雨备、任意地点的开放时间
 {
-  ok('口令太短不算账号', normalizeAccountCode('abc') === '')
-  const file = path.join(os.tmpdir(), `tm-accounts-${Date.now()}.json`)
-  const stay = { persona: 'stay', diet: ['不吃辣'], tier: '经济', home: '甲城' }
-  const trek = { persona: 'trek', diet: [], tier: '高端', home: '乙城' }
-  putAccount('family01', stay, file)
-  putAccount('trek0001', trek, file)
-  const a = getAccount('family01', file)
-  const b = getAccount('trek0001', file)
-  ok('画像按口令隔离', a.profile.persona === 'stay' && a.profile.diet.join() === '不吃辣' && b.profile.home === '乙城' && a.profile.home !== b.profile.home)
-  ok('别人口令读不到这一份', getAccount('nobody1', file).found === false)
+  ok('邮箱不像邮箱就不收', normalizeEmail('jia') === '' && normalizeEmail('13800138000') === '')
 
   const rainTrip = {
     startDate: '2026-10-01',
@@ -659,5 +613,65 @@ const dayWith = (stay) => ({
   ok('闭馆日对任意地点生效', monday.some((item) => item.includes('乙馆') && item.includes('闭馆日')))
   ok('没带开放时间就不查', qualityChecklist({ startDate: '2026-10-03', days: [{ slots: [{ name: '甲馆', time: '19:00' }] }] }).every((item) => !item.includes('开放到')))
 }
+
+const file = path.join(os.tmpdir(), `tm-users-${Date.now()}.sqlite`)
+const sink = []
+async function oneCode(purpose, account) {
+  sink.length = 0
+  const sent = await requestVerify({ purpose, account, file, sink, minInterval: 0 })
+  if (!sent.ok) throw new Error(sent.error || '验证码没发出')
+  return sink[0].code
+}
+const mail = 'jia@example.com'
+const other = 'yi@example.com'
+const pass = 'travel-pass-1'
+const otherPass = 'trek-pass-22'
+const mailCode = await oneCode('register', mail)
+const first = await registerUser({ account: mail, code: mailCode, password: pass, file })
+const otherCode = await oneCode('register', other)
+const second = await registerUser({ account: other, code: otherCode, password: otherPass, file })
+ok('两个邮箱各自注册', first.ok && first.username === mail && second.ok && second.username === other && !('profile' in first))
+ok('手机号不能当账号', (await registerUser({ account: '13800138000', code: '000000', password: pass, file })).error === '请填写邮箱')
+ok('验证码不对注册不了', (await registerUser({ account: 'bing@example.com', code: '000000', password: pass, file })).ok === false)
+ok('密码太短注册不了', (await registerUser({ account: 'bing@example.com', code: '000000', password: 'short', file })).error === '密码至少 8 位')
+ok('密码不对就登录不了', (await loginUser({ account: mail, password: otherPass, file })).error === '密码不对')
+const again = await loginUser({ account: mail, password: pass, file })
+ok('邮箱和密码对了就登录成功', again.ok && sessionUser(again.token, file).username === mail)
+ok('用过的验证码不能再注册', (await registerUser({ account: mail, code: mailCode, password: pass, file })).ok === false)
+ok('两个账号的登录状态互不串', sessionUser(second.token, file).username === other)
+const raw = fs.readFileSync(file, 'utf8')
+ok('验证码和密码不明文落在数据库', raw.startsWith('SQLite format 3') && !raw.includes(mailCode) && !raw.includes(pass) && !raw.includes(otherPass))
+
+const smtp = await new Promise((resolve) => {
+  const letters = []
+  let mode = 'cmd'
+  let data = ''
+  const server = net.createServer((socket) => {
+    socket.write('220 ready\r\n')
+    socket.on('data', (buf) => {
+      const text = buf.toString()
+      if (mode === 'data') {
+        data += text
+        if (data.includes('\r\n.\r\n')) {
+          letters.push(data)
+          mode = 'cmd'
+          data = ''
+          socket.write('250 ok\r\n')
+        }
+        return
+      }
+      const line = text.trim()
+      if (/^DATA/i.test(line)) {
+        mode = 'data'
+        socket.write('354 go\r\n')
+      } else if (/^QUIT/i.test(line)) socket.write('221 bye\r\n')
+      else socket.write('250 ok\r\n')
+    })
+  })
+  server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, letters }))
+})
+await sendMail({ to: mail, code: '654321', host: '127.0.0.1', port: smtp.port, secure: false, user: '', pass: '', from: 'code@example.com' })
+await new Promise((resolve) => smtp.server.close(resolve))
+ok('邮件验证码能从 SMTP 发出去', smtp.letters.some((letter) => letter.includes('654321') && letter.includes(mail)))
 
 console.log(`\nGOLDEN ALL PASS (${n})`)

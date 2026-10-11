@@ -27,7 +27,6 @@ export type Envelope = {
   reply: string
   changes: SlotChange[]
   replaceDays: DayRewrite[]
-  facts?: unknown[]
 }
 
 type Day = { date?: string; slots?: Array<Record<string, unknown>>; dining?: Array<Record<string, unknown>>; [key: string]: unknown }
@@ -49,7 +48,7 @@ const SET_KEYS = [
   'needsBooking', 'leadDays', 'transport',
 ]
 
-function parseJsonish(text: string): unknown | null {
+export function parseJsonish(text: string): unknown | null {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const raw = fenced ? fenced[1] : text
   const start = raw.indexOf('{')
@@ -89,7 +88,6 @@ export function extractEnvelope(text: string): Envelope | null {
     replaceDays?: unknown
     rewrites?: unknown
     title?: unknown
-    facts?: unknown
   } | null
   const replaceDays = asRewrites(obj?.replaceDays || obj?.rewrites)
   if (obj && Array.isArray(obj.days) && obj.title && !obj.changes && !obj.edits && !replaceDays.length) return null
@@ -99,7 +97,6 @@ export function extractEnvelope(text: string): Envelope | null {
       reply: String(obj.reply || obj.message || '').trim(),
       changes: raw.filter((it) => it && typeof it === 'object') as SlotChange[],
       replaceDays,
-      facts: Array.isArray(obj.facts) ? obj.facts : [],
     }
   }
   const trimmed = text.replace(/```[\s\S]*?```/g, '').trim()
@@ -178,6 +175,14 @@ export function digestTrip(trip: Trip | null, opts?: { day?: number | null }) {
     }
   })
   return lines.join('\n')
+}
+
+export function looksLikeQuestion(text: string) {
+  const t = text.trim()
+  if (!t) return false
+  if (/[？?]/.test(t)) return true
+  if (/^(请问|问一下|什么|怎么|怎样|为什么|为啥|哪|几|多少|是否|能不能|可不可以|会不会|是不是|有没有)/.test(t)) return true
+  return /(吗|呢|累不累|远不远|怎么样|行不行)[。.!！]?$/.test(t) && !/改成|改为|换成|删掉|加上/.test(t)
 }
 
 export function wantsPhotos(text: string) {

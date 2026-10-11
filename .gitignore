@@ -8,5 +8,10 @@ preview-*.png
 .DS_Store
 server/.cache-photo.json
 server/.accounts.json
+server/.users.json
+server/.users.json.migrated
+server/.users.sqlite
+server/.users.sqlite-wal
+server/.users.sqlite-shm
 travel-assets/uploads/*
 !travel-assets/uploads/.gitkeep

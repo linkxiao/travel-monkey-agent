@@ -1,6 +1,5 @@
 // 会话存 IndexedDB：localStorage 只有约 5MB，装不下多趟行程的整页 HTML 和版本。
 // 两个表：sessions 存全量，meta 只存列表要用的几项，切换列表不用把每趟的 HTML 都读出来。
-import type { Fact } from './memory.ts'
 import type { Trip } from './trip.ts'
 
 export type SessionBubble = { role: 'user' | 'assistant'; text: string }
@@ -24,7 +23,6 @@ export type SessionData = {
   planDraft: string
   persona: string
   research: SessionResearch
-  facts: Fact[]
   versions: Array<{ label: string; trip: Trip; html: string }>
 }
 
@@ -56,8 +54,8 @@ export function sessionTitle(s: Pick<SessionData, 'trip' | 'bubbles'>) {
   return first ? first.text.replace(/\s+/g, ' ').trim().slice(0, 18) : '新行程'
 }
 
-export function isEmptySession(s: Pick<SessionData, 'trip' | 'planDraft' | 'bubbles' | 'facts'>) {
-  return sessionStage(s) === 'empty' && !s.facts.length
+export function isEmptySession(s: Pick<SessionData, 'trip' | 'planDraft' | 'bubbles'>) {
+  return sessionStage(s) === 'empty'
 }
 
 function openDb(): Promise<IDBDatabase | null> {
