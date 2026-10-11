@@ -688,12 +688,13 @@ function normalizeTrip(trip) {
 
 const SEED_DIR = path.resolve(__dirname, '..', 'seed', 'trips')
 
+// 示例行程都放在 seed/trips/，按文件名排序；目录空了才退回模具自带的那份
 function seedFiles() {
-  const extra = fs.existsSync(SEED_DIR)
+  const files = fs.existsSync(SEED_DIR)
     ? fs.readdirSync(SEED_DIR).filter((f) => f.endsWith('.json')).sort()
       .map((f) => ({ id: f.replace(/\.json$/, ''), file: path.join(SEED_DIR, f) }))
     : []
-  return [{ id: 'shudao', file: SEED_JSON }, ...extra]
+  return files.length ? files : [{ id: '01', file: SEED_JSON }]
 }
 
 export function listSeedTrips() {
@@ -712,9 +713,9 @@ export function saveSeedTrip(raw) {
   if (!trip || !trip.title || !Array.isArray(trip.days) || !trip.days.length) throw new Error('当前没有完整行程')
   if (trip.ui && typeof trip.ui === 'object') delete trip.ui.themeCss
   fs.mkdirSync(SEED_DIR, { recursive: true })
-  const files = seedFiles()
-  const same = listSeedTrips().find((s) => s.title === trip.title)
-  const id = same && same.id !== files[0].id ? same.id : String(files.length + 1).padStart(2, '0')
+  const same = fs.readdirSync(SEED_DIR).length ? listSeedTrips().find((s) => s.title === trip.title) : null
+  const top = Math.max(0, ...seedFiles().map((s) => Number(s.id) || 0))
+  const id = same ? same.id : String(top + 1).padStart(2, '0')
   fs.writeFileSync(path.join(SEED_DIR, `${id}.json`), JSON.stringify(trip, null, 2) + '\n')
   return { id, title: trip.title, order: listSeedTrips().findIndex((s) => s.id === id) + 1 }
 }

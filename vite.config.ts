@@ -93,9 +93,9 @@ function localAssets(): Plugin {
           res.end(JSON.stringify(listSeedTrips()))
           return
         }
-        if (url === '/seed/trip.json' || url.startsWith('/seed/trip.json?')) {
+        if (url === '/seed/trip.json') {
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(JSON.stringify(loadSeedTrip(new URL(url, 'http://local').searchParams.get('id') || '')))
+          res.end(JSON.stringify(loadSeedTrip(new URL(req.url || '', 'http://local').searchParams.get('id') || '')))
           return
         }
         if (url === '/seed/trip.html' && fs.existsSync(seedHtml)) {
