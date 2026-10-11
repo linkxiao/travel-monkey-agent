@@ -1,5 +1,7 @@
 // FILL 之后的质检清单。只查模具会画出来的必填项，不替模型编店名。
 // 程序补齐后仍然是占位句的，算没过：占位不能冒充「已填」。
+// 行程上带来的开放时间，对任意地点同一套：窗口外或闭馆日算没过。没有时刻就不查。
+import { hoursIssues } from './hours.mjs'
 
 const MEALS = ['早餐', '午餐', '晚餐']
 const GENERIC_PLACE = /^(待定|当日特色餐饮|当日晚餐|景点附近午餐|住宿店内或就近清淡早餐|就近小食|就近清淡早餐)$/
@@ -63,5 +65,6 @@ export function qualityChecklist(trip) {
     })
   }
 
-  return issues
+  const windows = Array.isArray(trip?.openHours) ? trip.openHours : []
+  return [...issues, ...hoursIssues(trip, windows)]
 }

@@ -7,5 +7,6 @@ dist
 preview-*.png
 .DS_Store
 server/.cache-photo.json
+server/.accounts.json
 travel-assets/uploads/*
 !travel-assets/uploads/.gitkeep

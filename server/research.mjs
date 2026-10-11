@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { parseOpenText } from './hours.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -195,7 +196,12 @@ export function routeLibraryLine(query, dest) {
       const score = hit.分 || {}
       const stars = [score.代表性 ? `代表性${score.代表性}星` : '', score.难度 ? `难度${score.难度}星` : ''].filter(Boolean).join('·')
       const src = [hit.来源 ? `来源${hit.来源}` : '', hit.更新 ? `更新${hit.更新}` : ''].filter(Boolean).join('，')
-      return `线路库「${hit.线}」：必看${arr(hit.必看).join('、')}（不要漏）；可砍${arr(hit.可砍).join('、')}（只二选一地砍）；${hit.耗时}；${hit.补给}。${stars}${src ? `。${src}` : ''}`
+      const clocks = arr(hit.时刻).map((item) => {
+        const bits = [item.点, item.开放, item.闭馆 ? `闭馆${item.闭馆}` : '', item.演出 ? `演出${item.演出}` : '', item.置信].filter(Boolean)
+        return bits.join(' ')
+      }).filter(Boolean)
+      const when = clocks.length ? `时刻：${clocks.join('；')}。` : ''
+      return `线路库「${hit.线}」：必看${arr(hit.必看).join('、')}（不要漏）；可砍${arr(hit.可砍).join('、')}（只二选一地砍）；${hit.耗时}；${hit.补给}。${stars}${src ? `。${src}` : ''}。${when}`
     }
     // L2 模式线兜底：按地形/主题命中，非本线实测
     const pat = (lib.patterns || []).find((p) => (p.命中 || []).some((w) => w && blob.includes(w)))
@@ -234,7 +240,7 @@ export async function researchQuery({ query, amapKey, searchKey, searchProvider 
         if (wgs) places.push({ name: dest + '（城市中心）', lat: wgs.lat, lng: wgs.lng, from: '高德地理编码' })
       }
       const [poi, cheapHotels, midHotels, highHotels] = await Promise.all([
-        amap('place/text', { key: amapKey, keywords: dest + ' 景点', city, offset: 6 }),
+        amap('place/text', { key: amapKey, keywords: dest + ' 景点', city, offset: 6, extensions: 'all' }),
         amap('place/text', { key: amapKey, keywords: dest + ' 经济型酒店', city, offset: 4, extensions: 'all' }),
         amap('place/text', { key: amapKey, keywords: dest + ' 酒店', city, offset: 4, extensions: 'all' }),
         amap('place/text', { key: amapKey, keywords: dest + ' 豪华酒店', city, offset: 4, extensions: 'all' }),
@@ -246,7 +252,16 @@ export async function researchQuery({ query, amapKey, searchKey, searchProvider 
         const [lng, lat] = String(p.location).split(',')
         const wgs = toWgs(lat, lng)
         if (!wgs) continue
-        places.push({ name: p.name, lat: wgs.lat, lng: wgs.lng, address: p.address || '', from: '高德 POI' })
+        const hours = parseOpenText(p.biz_ext?.opentime || p.biz_ext?.open_time || '')
+        places.push({
+          name: p.name,
+          lat: wgs.lat,
+          lng: wgs.lng,
+          address: p.address || '',
+          from: '高德 POI',
+          open: hours?.open || '',
+          closedWeekdays: hours?.closedWeekdays || [],
+        })
       }
       if (first && first.adcode) {
         const w = await amap('weather/weatherInfo', { key: amapKey, city: first.adcode, extensions: 'base' })
@@ -303,6 +318,12 @@ export async function researchQuery({ query, amapKey, searchKey, searchProvider 
         return names.length ? `${tier} ${names.join('、')}` : ''
       }).filter(Boolean).join(' / ') : '',
     legs.length ? `点到点：` + legs.join('；') : '',
+    places.some((p) => p.open || (p.closedWeekdays || []).length)
+      ? `开放时间（高德，任何地点同一套：不要排在窗口外，闭馆日不要排）：` + places.filter((p) => p.open || (p.closedWeekdays || []).length).slice(0, 8).map((p) => {
+        const days = (p.closedWeekdays || []).map((d) => '日一二三四五六'[d] || '').filter(Boolean)
+        return `${p.name} ${[p.open, days.length ? `周${days.join('、')}闭馆` : ''].filter(Boolean).join(' ')}`
+      }).join('；')
+      : '',
     flights.length ? `航班线索：` + flights.slice(0, 3).map((f) => f.title).join(' / ') : '',
     hotels.length ? `酒店线索：` + hotels.slice(0, 3).map((h) => h.title).join(' / ') : '',
     local.length ? `时令/必吃：` + local.slice(0, 3).map((h) => h.title).join(' / ') : '',
@@ -319,6 +340,11 @@ export async function researchQuery({ query, amapKey, searchKey, searchProvider 
     dest,
     sources,
     places: places.slice(0, 10),
+    openHours: places.filter((p) => p.open || (p.closedWeekdays || []).length).slice(0, 8).map((p) => ({
+      name: p.name,
+      open: p.open || '',
+      closedWeekdays: p.closedWeekdays || [],
+    })),
     weather,
     hotelsByTier,
     brief: lines.join('\n').slice(0, 2000),

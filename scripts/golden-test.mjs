@@ -18,6 +18,11 @@ import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
 import { enrichTripTransport } from '../server/transport.mjs'
 import { qualityChecklist } from '../server/quality.mjs'
+import { hoursIssues, parseOpenText } from '../server/hours.mjs'
+import { getAccount, normalizeAccountCode, putAccount } from '../server/accounts.mjs'
+import { todayAdvice } from '../src/lib/today.ts'
+import os from 'node:os'
+import path from 'node:path'
 
 let n = 0
 const ok = (name, cond) => {
@@ -600,6 +605,59 @@ const dayWith = (stay) => ({
   const msgs = buildPlanMessages({ facts: [], bubbles: [], text: '去西安', profile: offer })
   ok('画像：新行程开场带上', msgs[0].content.includes('跨行程画像') && msgs[0].content.includes('常住：成都'))
   ok('画像：没有画像就不占消息', buildPlanMessages({ facts: [], bubbles: [], text: '去西安' })[0].content === '去西安')
+}
+
+// 9. 通用规则：账号隔离、当日雨备、任意地点的开放时间
+{
+  ok('口令太短不算账号', normalizeAccountCode('abc') === '')
+  const file = path.join(os.tmpdir(), `tm-accounts-${Date.now()}.json`)
+  const stay = { persona: 'stay', diet: ['不吃辣'], tier: '经济', home: '甲城' }
+  const trek = { persona: 'trek', diet: [], tier: '高端', home: '乙城' }
+  putAccount('family01', stay, file)
+  putAccount('trek0001', trek, file)
+  const a = getAccount('family01', file)
+  const b = getAccount('trek0001', file)
+  ok('画像按口令隔离', a.profile.persona === 'stay' && a.profile.diet.join() === '不吃辣' && b.profile.home === '乙城' && a.profile.home !== b.profile.home)
+  ok('别人口令读不到这一份', getAccount('nobody1', file).found === false)
+
+  const rainTrip = {
+    startDate: '2026-10-01',
+    days: [
+      { slots: [{ name: '甲点' }] },
+      { slots: [{ name: '乙点' }, { name: '丙点' }], craft: { rain: { cut: '丙点', instead: '改去室内' } } },
+    ],
+  }
+  const dry = todayAdvice(rainTrip, { now: new Date(2026, 9, 2), rain: false })
+  const wet = todayAdvice(rainTrip, { now: new Date(2026, 9, 2), rain: true })
+  ok('当日对上第二天', dry.inTrip && dry.dayLabel === 'D2' && /乙点/.test(dry.detail))
+  ok('下雨改雨备', wet.headline.includes('改雨备') && /丙点/.test(wet.detail) && /室内/.test(wet.detail))
+  ok('日期对不上就明说', todayAdvice(rainTrip, { now: new Date(2026, 10, 1) }).headline === '今天不在这趟日期里')
+
+  const parsed = parseOpenText('周一闭馆 09:00-17:00')
+  ok('开放时间文本能拆出窗口和闭馆日', parsed.open === '09:00-17:00' && parsed.closedWeekdays.join() === '1')
+  ok('没有时刻的句子不造窗口', parseOpenText('随时可看') == null)
+  const windows = [{ name: '甲馆', open: '09:00-17:00', from: '2026-10-01', to: '2026-10-07' }]
+  const late = hoursIssues({
+    startDate: '2026-10-03',
+    days: [{ slots: [{ name: '甲馆', time: '18:00' }] }],
+  }, windows)
+  ok('任意地点排在窗口外会被拦住', late.some((item) => item.includes('甲馆') && item.includes('09:00-17:00')))
+  const daytime = hoursIssues({
+    startDate: '2026-10-03',
+    days: [{ slots: [{ name: '甲馆', time: '10:00' }] }],
+  }, windows)
+  ok('窗口内不误伤', daytime.length === 0)
+  const outside = hoursIssues({
+    startDate: '2026-11-03',
+    days: [{ slots: [{ name: '甲馆', time: '19:00' }] }],
+  }, windows)
+  ok('日期不在窗口范围内不拦', outside.length === 0)
+  const monday = hoursIssues({
+    startDate: '2026-10-05',
+    days: [{ slots: [{ name: '乙馆', time: '10:00' }] }],
+  }, [{ name: '乙馆', closedWeekdays: [1] }])
+  ok('闭馆日对任意地点生效', monday.some((item) => item.includes('乙馆') && item.includes('闭馆日')))
+  ok('没带开放时间就不查', qualityChecklist({ startDate: '2026-10-03', days: [{ slots: [{ name: '甲馆', time: '19:00' }] }] }).every((item) => !item.includes('开放到')))
 }
 
 console.log(`\nGOLDEN ALL PASS (${n})`)

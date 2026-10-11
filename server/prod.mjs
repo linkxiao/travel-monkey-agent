@@ -8,6 +8,7 @@ import { skillStatus } from './skill-prompt.mjs'
 import { handlePhotoProxy } from './photos.mjs'
 import { handleResearch } from './research.mjs'
 import { handleUpload } from './uploads.mjs'
+import { handleAccount } from './accounts.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.join(__dirname, '..', 'dist')
@@ -52,6 +53,9 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/upload') {
     return handleUpload(req, res)
+  }
+  if (url.pathname === '/api/account') {
+    return handleAccount(req, res)
   }
   if (url.pathname === '/travel-photo') {
     return handlePhotoProxy(req, res)

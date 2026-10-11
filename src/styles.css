@@ -49,8 +49,30 @@ body {
 .brand p { margin: 0; font-size: 12px; line-height: 1.65; color: var(--muted); }
 .brand .skill-ok { margin-top: 8px; color: #c4a15a; }
 
-.controls {
-  padding: 14px 22px 10px;
+.controls summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--paper);
+}
+.controls summary + label { margin-top: 10px; }
+.today-card {
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.today-card p { margin: 6px 0 8px; font-size: 15px; line-height: 1.55; color: var(--paper); }
+.account-line { display: grid; gap: 4px; margin: 0 16px 10px; }
+.account-line span { font-size: 12px; color: var(--muted); }
+.account-line input {
+  background: transparent;
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.controls {  padding: 14px 22px 10px;
   display: grid;
   gap: 10px;
 }

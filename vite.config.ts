@@ -9,6 +9,7 @@ import { skillStatus } from './server/skill-prompt.mjs'
 import { handlePhotoProxy } from './server/photos.mjs'
 import { handleResearch } from './server/research.mjs'
 import { handleUpload } from './server/uploads.mjs'
+import { handleAccount } from './server/accounts.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const assetsRoot = path.join(__dirname, 'travel-assets')
@@ -52,6 +53,9 @@ function localAssets(): Plugin {
           return
         }
         handleResearch(req, res)
+      })
+      server.middlewares.use('/api/account', (req, res) => {
+        handleAccount(req, res)
       })
       server.middlewares.use('/api/upload', (req, res) => {
         if (req.method !== 'POST') {

@@ -5,6 +5,7 @@ export type ResearchBrief = {
   brief?: string
   sources?: Array<{ name: string; scope?: string; realtime?: boolean }>
   hotelsByTier?: { 经济?: HotelHint[]; 中档?: HotelHint[]; 高端?: HotelHint[] }
+  openHours?: Array<{ name: string; open?: string; closedWeekdays?: number[] }>
   error?: string
 }
 

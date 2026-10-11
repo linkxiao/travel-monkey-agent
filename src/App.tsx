@@ -8,6 +8,8 @@ import { fetchResearch, type ResearchBrief } from './lib/research'
 import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { isEmptyProfile, loadProfile, mergeProfile, profileLines, proposeProfile, removeProfilePart, saveProfile, wantsRemember, type Profile } from './lib/profile'
+import { fetchAccount, pushAccount } from './lib/account'
+import { todayAdvice } from './lib/today'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
 import { buildChatMessages, buildFillMessages, buildPlanMessages, factsPair } from './lib/context'
 import { avoidHits, FACT_LABELS, learnFromModel, learnFromUser, modelDrops, namesHitAvoid, normalizeModelFacts, planAvoidHits, removeFact, sortFacts, takeMemo, type Fact, type MemoUpdate } from './lib/memory'
@@ -93,20 +95,25 @@ export default function App() {
   const [planningPersona, setPlanningPersona] = useState('')
   const [profile, setProfile] = useState<Profile>(() => loadProfile())
   const [profileOffer, setProfileOffer] = useState<Profile | null>(null)
+  const [accountCode, setAccountCode] = useState(() => loadSetting('ct.account', ''))
+  const [accountReady, setAccountReady] = useState(false)
+  const [rainOn, setRainOn] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
-  const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier'] }>({})
+  const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier']; openHours?: ResearchBrief['openHours'] }>({})
   const [facts, setFacts] = useState<Fact[]>([])
   // 同一轮里先记约束再发请求，state 来不及更新，发请求时读 ref
   const factsRef = useRef<Fact[]>([])
   const profileRef = useRef<Profile>(profile)
+  const accountRef = useRef(accountCode)
   const [sessionId, setSessionId] = useState('')
   const [sessionList, setSessionList] = useState<SessionMeta[]>([])
   const [hydrated, setHydrated] = useState(false)
   const createdRef = useRef(Date.now())
 
   const provider = getProvider(providerId)
+  const today = todayAdvice(trip, { rain: rainOn })
   const model = providerId === 'custom' ? (customModel || 'gpt-4o') : modelId
   const canConfirm = Boolean(planDraft && !trip)
   const askItems = useMemo(() => {
@@ -156,7 +163,25 @@ export default function App() {
   useEffect(() => {
     profileRef.current = profile
     saveProfile(profile)
-  }, [profile])
+    const code = accountRef.current
+    if (!accountReady || !code) return
+    void pushAccount(code, profile)
+  }, [profile, accountReady])
+
+  useEffect(() => {
+    let alive = true
+    const code = accountRef.current
+    if (!code) {
+      setAccountReady(true)
+      return
+    }
+    void fetchAccount(code).then((remote) => {
+      if (!alive) return
+      if (remote?.found && remote.profile && !isEmptyProfile(remote.profile)) setProfile(remote.profile)
+      setAccountReady(true)
+    })
+    return () => { alive = false }
+  }, [])
 
   function commitFacts(next: Fact[]) {
     factsRef.current = next
@@ -382,6 +407,7 @@ export default function App() {
         done: true,
         query,
         brief: research.brief || '',
+        openHours: research.openHours || [],
         sources: research.sources,
         hotelsByTier: research.hotelsByTier,
       }
@@ -508,6 +534,7 @@ export default function App() {
     if (research.sources?.length && !Array.isArray(nextTrip.dataSources)) {
       nextTrip.dataSources = research.sources
     }
+    if (research.openHours?.length) nextTrip.openHours = research.openHours
     let out = await applyTrip(nextTrip)
     const avoided = avoidHits(out.trip, factsRef.current)
     const qualityOf = (page: { quality?: string[] }) => page.quality || []
@@ -867,13 +894,39 @@ export default function App() {
     }])
   }
 
+  function rememberAccountCode() {
+    const current = accountRef.current.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (current.length >= 6) return current
+    const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'
+    const bytes = crypto.getRandomValues(new Uint8Array(8))
+    const next = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+    accountRef.current = next
+    setAccountCode(next)
+    try { localStorage.setItem('ct.account', next) } catch { /* ignore */ }
+    return next
+  }
+
+  async function applyAccountCode(raw: string) {
+    const code = raw.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (code.length < 6 || code.length > 16) return
+    accountRef.current = code
+    setAccountCode(code)
+    try { localStorage.setItem('ct.account', code) } catch { /* ignore */ }
+    const remote = await fetchAccount(code)
+    if (remote?.found && remote.profile) setProfile(remote.profile)
+    else void pushAccount(code, profileRef.current)
+    setAccountReady(true)
+  }
+
   function confirmProfile(offer = profileOffer) {
     if (!offer || isEmptyProfile(offer)) return
     const next = mergeProfile(profileRef.current, offer)
+    rememberAccountCode()
+    setAccountReady(true)
     setProfile(next)
     if (next.persona) setPlanningPersona(next.persona)
     setProfileOffer(null)
-    setBubbles((prev) => [...prev, { role: 'assistant', text: '已记住。新建行程时会带上这些，不再重问人格。要去掉某一条，点画像上的 ×。' }])
+    setBubbles((prev) => [...prev, { role: 'assistant', text: '已记住。新建行程时会带上这些。换一台设备时，填同一串口令就能看见。要去掉某一条，点画像上的 ×。' }])
   }
 
   async function run(prompt: string) {
@@ -1009,7 +1062,7 @@ export default function App() {
         <header className="brand">
           <div className="brand-kicker">TRAVEL MONKEY</div>
           <h1>Travel <span>Monkey</span></h1>
-          <p>先选人格  如：旅居/带队/探秘，再描述行程 如：想去哪，玩几天。系统会给您输出行程大纲，你点击「确认生成」后系统才会生成具体的行程页（此时才消耗token）。</p>
+          <p>先选旅居、带队或探秘，再说想去哪、玩几天。先看大纲，点「确认生成」后才做出行程页。</p>
           {skillLabel && <p className="skill-ok">{skillLabel}</p>}
         </header>
 
@@ -1034,7 +1087,19 @@ export default function App() {
           )}
         </div>
 
-        <section className="controls">
+        <label className="account-line">
+          <span>换设备口令 · 两台设备填同一串，画像就跟着走</span>
+          <input
+            value={accountCode}
+            onChange={(e) => setAccountCode(e.target.value)}
+            onBlur={() => void applyAccountCode(accountCode)}
+            placeholder="6 到 16 位字母或数字"
+            autoComplete="off"
+          />
+        </label>
+
+        <details className="controls" open={apiKey.trim() ? undefined : true}>
+          <summary>连接模型（填过可以收起）</summary>
           <label>
             <span>服务商</span>
             <select
@@ -1110,9 +1175,21 @@ export default function App() {
             <input type="password" value={searchKey} onChange={(e) => setSearchKey(e.target.value)} placeholder="可选；有则点评店图优先" autoComplete="off" />
           </label>
           {!amapKey.trim() && !searchKey.trim() && (
-            <p className="plan-ask-hint">没填 Key 也能用：坐标、交通、酒店价按模型记忆参考，出行前请以官方渠道核实。</p>
+            <p className="plan-ask-hint">没填地图和搜索也能用：坐标、交通、酒店价按模型记忆参考，出行前请以官方渠道核实。</p>
           )}
-        </section>
+        </details>
+
+        {trip && (
+          <div className="today-card">
+            <div className="plan-ask-k">{today.headline}</div>
+            <p>{today.detail}</p>
+            {today.inTrip && (
+              <button type="button" className="ghost" onClick={() => setRainOn((on) => !on)}>
+                {rainOn ? '雨停了，按原计划' : '今天下雨，改雨备'}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="log" ref={logRef}>
           {bubbles.map((b, i) => (
