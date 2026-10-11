@@ -94,8 +94,10 @@ function localAssets(): Plugin {
           return
         }
         if (url === '/seed/trip.json') {
+          const seed = loadSeedTrip(new URL(req.url || '', 'http://local').searchParams.get('id') || '')
+          res.statusCode = seed ? 200 : 404
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(JSON.stringify(loadSeedTrip(new URL(req.url || '', 'http://local').searchParams.get('id') || '')))
+          res.end(JSON.stringify(seed || { error: '没有示例行程' }))
           return
         }
         if (url === '/seed/trip.html' && fs.existsSync(seedHtml)) {

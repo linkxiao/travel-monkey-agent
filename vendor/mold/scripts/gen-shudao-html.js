@@ -1045,11 +1045,11 @@ if (require.main === module) {
   const outArg = process.argv[3];
   const tripPath = tripArg
     ? (path.isAbsolute(tripArg) ? tripArg : path.join(__dirname, tripArg))
-    : path.join(__dirname, 'shudao-trip.json');
+    : path.join(__dirname, '..', '..', '..', 'seed', 'trips', '01.json');
   const trip = JSON.parse(fs.readFileSync(tripPath, 'utf8'));
   const outPath = outArg
     ? (path.isAbsolute(outArg) ? outArg : path.join(process.cwd(), outArg))
-    : path.join(__dirname, '..', '..', 'seed', 'shudao-zhongqiu.html');
+    : path.join(__dirname, '..', '..', '..', 'seed', 'shudao-zhongqiu.html');
   const html = renderTrip(trip);
   fs.writeFileSync(outPath, html);
   console.log('Wrote', outPath, html.length, 'bytes');

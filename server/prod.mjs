@@ -74,8 +74,9 @@ const server = http.createServer(async (req, res) => {
     return
   }
   if (url.pathname === '/seed/trip.json') {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify(loadSeedTrip(url.searchParams.get('id') || '')))
+    const seed = loadSeedTrip(url.searchParams.get('id') || '')
+    res.writeHead(seed ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(seed || { error: '没有示例行程' }))
     return
   }
   if (url.pathname === '/seed/trip.html' && fs.existsSync(seedHtml)) {

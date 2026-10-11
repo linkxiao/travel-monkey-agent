@@ -34,8 +34,6 @@ import { detectPersona, normalizePersona, personaLabel, personaTip } from './per
 import { ensureDayCraft } from './craft.mjs'
 import { qualityChecklist } from './quality.mjs'
 
-const SEED_JSON = path.join(vizRoot, 'scripts', 'shudao-trip-zhongqiu.json')
-
 const DEFAULT_DISCLAIMER =
   '本页全部信息（天气、航班、高铁、酒店、餐厅、景点、门票、价格、营业时间、评分、活动等）均为 AI 基于公开资料整理的参考建议，可能不准确或已过时，不保证与实时情况一致；请务必在官方渠道核实后再出发。'
 
@@ -688,13 +686,12 @@ function normalizeTrip(trip) {
 
 const SEED_DIR = path.resolve(__dirname, '..', 'seed', 'trips')
 
-// 示例行程都放在 seed/trips/，按文件名排序；目录空了才退回模具自带的那份
+// 示例行程都放在 seed/trips/，按文件名排序
 function seedFiles() {
-  const files = fs.existsSync(SEED_DIR)
+  return fs.existsSync(SEED_DIR)
     ? fs.readdirSync(SEED_DIR).filter((f) => f.endsWith('.json')).sort()
       .map((f) => ({ id: f.replace(/\.json$/, ''), file: path.join(SEED_DIR, f) }))
     : []
-  return files.length ? files : [{ id: '01', file: SEED_JSON }]
 }
 
 export function listSeedTrips() {
@@ -713,7 +710,7 @@ export function saveSeedTrip(raw) {
   if (!trip || !trip.title || !Array.isArray(trip.days) || !trip.days.length) throw new Error('当前没有完整行程')
   if (trip.ui && typeof trip.ui === 'object') delete trip.ui.themeCss
   fs.mkdirSync(SEED_DIR, { recursive: true })
-  const same = fs.readdirSync(SEED_DIR).length ? listSeedTrips().find((s) => s.title === trip.title) : null
+  const same = listSeedTrips().find((s) => s.title === trip.title)
   const top = Math.max(0, ...seedFiles().map((s) => Number(s.id) || 0))
   const id = same ? same.id : String(top + 1).padStart(2, '0')
   fs.writeFileSync(path.join(SEED_DIR, `${id}.json`), JSON.stringify(trip, null, 2) + '\n')
@@ -734,7 +731,7 @@ export async function handleSeedSave(req, res) {
 export function loadSeedTrip(id) {
   const files = seedFiles()
   const hit = files.find((s) => s.id === id) || files[0]
-  return JSON.parse(fs.readFileSync(hit.file, 'utf8'))
+  return hit ? JSON.parse(fs.readFileSync(hit.file, 'utf8')) : null
 }
 
 export async function runSkillPage(raw, opts = {}) {
