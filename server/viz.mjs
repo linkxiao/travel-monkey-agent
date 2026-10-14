@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const vizRoot = path.resolve(__dirname, '..', 'vendor', 'mold')
 const MOLD_FILE = path.join(vizRoot, 'scripts', 'gen-shudao-html.js')
-const MOLD_DEPS = [MOLD_FILE, ...['map.js', 'reminders.js'].map((f) => path.join(vizRoot, 'travel-plan-viz', 'assets', f))]
+const MOLD_DEPS = [MOLD_FILE, path.join(vizRoot, 'scripts', 'trip-style.css'), ...['map.js', 'reminders.js'].map((f) => path.join(vizRoot, 'travel-plan-viz', 'assets', f))]
 const { validateTrip, validateAll } = require(path.join(vizRoot, 'travel-plan-viz', 'assets', 'validate.js'))
 
 // require 缓存跟进程走，dev 服务重启不清；模具文件改了就重新加载
@@ -28,11 +28,12 @@ function renderTrip(trip) {
 }
 import { enrichTripPhotos } from './photos.mjs'
 import { applyThemeToTrip } from './themes.mjs'
-import { enrichTripTransport } from './transport.mjs'
+import { enrichTripTickets, enrichTripTransport } from './transport.mjs'
 import { fetchHotelsByDest, guessDest } from './research.mjs'
 import { detectPersona, normalizePersona, personaLabel, personaTip } from './persona.mjs'
 import { ensureDayCraft } from './craft.mjs'
 import { qualityChecklist } from './quality.mjs'
+import { dataKeys } from './config.mjs'
 
 const DEFAULT_DISCLAIMER =
   '本页全部信息（天气、航班、高铁、酒店、餐厅、景点、门票、价格、营业时间、评分、活动等）均为 AI 基于公开资料整理的参考建议，可能不准确或已过时，不保证与实时情况一致；请务必在官方渠道核实后再出发。'
@@ -552,21 +553,33 @@ function ensureDaySlots(day, isLast, fallback) {
     slot.period = slot.period || periods[i]
     slot.review = slot.review || ''
     if (typeof slot.transport === 'string') {
-      slot.transport = { mode: slot.transport, fare: '', duration: '' }
+      slot.transport = { mode: slot.transport, fare: '', duration: '', distance: '' }
     } else if (slot.transport && typeof slot.transport === 'object') {
       slot.transport.mode = slot.transport.mode || ''
       slot.transport.fare = slot.transport.fare || ''
       slot.transport.duration = slot.transport.duration || ''
+      slot.transport.distance = slot.transport.distance || ''
     }
+    if (slot.ticketPrice == null) slot.ticketPrice = ''
     if (slot.needsBooking && typeof slot.leadDays !== 'number') slot.leadDays = toNumber(slot.leadDays, 7)
   })
   day.slots = ordered
 }
 
+// 标题不能是待确认的问句或编号条目；不像标题就用目的地 + 天数代替
+export function tripTitle(trip) {
+  const raw = String(trip.title || '').trim()
+  if (raw && !/[？?]/.test(raw) && !/^\d+[.、．]/.test(raw) && !/待确认|答案[：:]/.test(raw)) return raw
+  const days = Array.isArray(trip.days) ? trip.days : []
+  const dest = guessDest([raw, ...days.map((d) => d && d.theme)].filter(Boolean).join(' '))
+  if (dest && days.length) return `${dest} ${days.length} 日行程`
+  return days.length ? `${days.length} 日行程` : '未命名行程'
+}
+
 function normalizeTrip(trip) {
   if (!trip || typeof trip !== 'object') throw new Error('trip 不是对象')
   const out = JSON.parse(JSON.stringify(trip))
-  out.title = out.title || '未命名行程'
+  out.title = tripTitle(out)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(out.startDate || '')) || Number.isNaN(Date.parse(`${out.startDate}T00:00:00Z`))) {
     out.startDate = new Date().toISOString().slice(0, 10)
   }
@@ -759,7 +772,11 @@ export async function runSkillPage(raw, opts = {}) {
       amapKey: opts.amapKey,
     })
   }
-  if (!opts.skipTransport) await enrichTripTransport(trip, opts.amapKey)
+  if (!opts.skipTransport) {
+    const mapKeys = { amapKey: opts.amapKey, tiandituKey: opts.tiandituKey }
+    await enrichTripTransport(trip, mapKeys)
+    await enrichTripTickets(trip, mapKeys)
+  }
   let html = renderTrip(trip)
   let report = validateAll(html)
   let usedFallback = !!opts.fallback
@@ -796,9 +813,7 @@ export async function handleRender(req, res) {
       photoHint: body.photoHint,
       photoDays: body.photoDays,
       photoQuery: body.photoQuery,
-      amapKey: body.amapKey,
-      searchKey: body.searchKey,
-      searchProvider: body.searchProvider,
+      ...dataKeys(body),
     })
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(out))

@@ -3,7 +3,8 @@
 import assert from 'node:assert'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
-import { dayBrief, normalizeTrip } from '../server/viz.mjs'
+import { dayBrief, normalizeTrip, tripTitle } from '../server/viz.mjs'
+import { askTitle, tripFromPlan } from '../src/lib/plan.ts'
 import { researchQuery } from '../server/research.mjs'
 import { resolveTargets } from '../src/lib/target.ts'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, photoOutcome, stripEditClaim, wantsPhotos, wantsTripEdit } from '../src/lib/trip.ts'
@@ -16,11 +17,13 @@ import { buildChatMessages, buildFillMessages, buildPlanMessages, splitWindow, u
 import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
 import { enrichTripPhotos } from '../server/photos.mjs'
-import { enrichTripTransport } from '../server/transport.mjs'
+import { enrichTripTickets, enrichTripTransport } from '../server/transport.mjs'
 import { qualityChecklist } from '../server/quality.mjs'
 import { hoursIssues, parseOpenText } from '../server/hours.mjs'
 import net from 'node:net'
-import { loginUser, normalizeEmail, registerUser, requestVerify, sessionUser } from '../server/users.mjs'
+import { loginUser, normalizeEmail, quotaLeft, registerUser, requestVerify, sessionUser, takeQuota } from '../server/users.mjs'
+import { dataKeys, publicConfig } from '../server/config.mjs'
+import { pickModel } from '../server/chat-proxy.mjs'
 import { sendMail } from '../server/deliver.mjs'
 import { todayAdvice } from '../src/lib/today.ts'
 import os from 'node:os'
@@ -152,30 +155,62 @@ const dayWith = (stay) => ({
   ok('没点名不对格', r2.names.length === 0)
 }
 
-// 5. 交通：城际走驾车 + 按人格选步行/公交（fetch 打桩，离线）
+// 5. 交通：城际走驾车 + 按人格选步行/公交；补距离 / 公交票价 / 打车估价（fetch 打桩，离线）
 {
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url) => {
     const u = String(url)
     const j = (o) => ({ json: async () => o })
-    if (u.includes('direction/driving')) return j({ route: { paths: [{ duration: '5400' }] } })
-    if (u.includes('transit/integrated')) return j({ route: { transits: [{ duration: '1500' }] } })
-    return j({ route: { paths: [{ duration: '1800' }] } })
+    if (u.includes('direction/driving')) {
+      return j({ route: { taxi_cost: '128', paths: [{ duration: '5400', distance: '168000' }] } })
+    }
+    if (u.includes('transit/integrated')) {
+      return j({ route: { transits: [{ duration: '1500', distance: '3200', cost: '4' }] } })
+    }
+    if (u.includes('place/text')) {
+      return j({ pois: [{ name: '清水寺', type: '风景名胜', biz_ext: { cost: '400', opentime: '06:00-18:00' } }] })
+    }
+    // 步行：30 分钟 = 1800s，旅居阈值 1200s 会转公交；探秘阈值 5400s 保留步行
+    return j({ route: { paths: [{ duration: '1800', distance: '2200' }] } })
   }
   try {
     const mk = (lat, lng, name) => ({ name, lat, lng })
     const t1 = { title: 'x', persona: 'stay', days: [{ slots: [mk(35.0, 102.9, 'A'), mk(33.5, 102.9, 'B')] }] }
     await enrichTripTransport(t1, 'K')
-    ok('城际自驾', t1.days[0].slots[1].transport.mode === '自驾/包车' && t1.days[0].slots[1].transport.intercity === true)
+    const leg1 = t1.days[0].slots[1].transport
+    ok('城际自驾', leg1.mode === '自驾/包车' && leg1.intercity === true)
+    ok('城际有距离', /公里|米/.test(leg1.distance || ''))
+    ok('城际有打车估价', /打车约 ¥/.test(leg1.fare || ''))
     const t2 = { title: 'x', persona: 'stay', days: [{ slots: [mk(31.0, 121.4, 'A'), mk(31.01, 121.41, 'B')] }] }
     await enrichTripTransport(t2, 'K')
-    ok('旅居转公交', t2.days[0].slots[1].transport.mode === '公交/地铁')
+    const leg2 = t2.days[0].slots[1].transport
+    ok('旅居转公交', leg2.mode === '公交/地铁')
+    ok('公交票价回填', /公交约 ¥4/.test(leg2.fare || ''))
+    ok('公交带打车对照', /打车约 ¥/.test(leg2.fare || ''))
+    ok('公交有距离', /公里|米/.test(leg2.distance || ''))
     const t3 = { title: 'x', persona: 'trek', days: [{ slots: [mk(31.0, 121.4, 'A'), mk(31.01, 121.41, 'B')] }] }
     await enrichTripTransport(t3, 'K')
-    ok('探秘保留步行', t3.days[0].slots[1].transport.mode === '步行')
+    const leg3 = t3.days[0].slots[1].transport
+    ok('探秘保留步行', leg3.mode === '步行')
+    ok('步行免费并给打车对照', /免费/.test(leg3.fare || '') && /打车约 ¥/.test(leg3.fare || ''))
+    const t4 = { title: '京都4日', days: [{ slots: [{ kind: 'spot', name: '清水寺', lat: 35, lng: 135 }] }] }
+    await enrichTripTickets(t4, 'K')
+    ok('景点门票回填', /门票参考约 ¥400/.test(t4.days[0].slots[0].ticketPrice || ''))
+    ok('景点营业时间顺带补', t4.days[0].slots[0].openingHours === '06:00-18:00')
   } finally {
     globalThis.fetch = realFetch
   }
+}
+
+// 5b. 无任何地图 Key：本地直线估算仍补距离与打车价
+{
+  const mk = (lat, lng, name) => ({ name, lat, lng })
+  const t = { title: '上海', persona: 'stay', days: [{ slots: [mk(31.23, 121.47, 'A'), mk(31.24, 121.49, 'B')] }] }
+  await enrichTripTransport(t, {})
+  const leg = t.days[0].slots[1].transport
+  ok('无 Key 仍有交通', !!leg && !!leg.mode && !!leg.distance)
+  ok('无 Key 有打车估价', /打车约 ¥|免费/.test(leg.fare || ''))
+  ok('无 Key 标记本地估算', (t.dataSources || []).some((s) => s && s.name === '本地路网估算'))
 }
 
 // 6. 改天必见：overview 每次从 days 重建 + 收据验货 + 本地 kind 句式 + 换图对比
@@ -641,6 +676,51 @@ ok('用过的验证码不能再注册', (await registerUser({ account: mail, cod
 ok('两个账号的登录状态互不串', sessionUser(second.token, file).username === other)
 const raw = fs.readFileSync(file, 'utf8')
 ok('验证码和密码不明文落在数据库', raw.startsWith('SQLite format 3') && !raw.includes(mailCode) && !raw.includes(pass) && !raw.includes(otherPass))
+
+const askPlan = '人格：旅居\nD1 2026-10-12：岚山 / 竹林 / 午休 / 天龙寺 / 住岚山 / 早·A / 午·B / 晚·C\n住宿片区：岚山\n待确认：\n1. 樱花季具体日期定了吗？花期决定岚山与奈良公园哪天去。\n答案：A.定了 B.没定'
+ok('大纲兜底标题不拿待确认问句', tripFromPlan(askPlan).title === '1 日行程')
+ok('大纲兜底标题用用户第一句话', tripFromPlan(askPlan, '京都、奈良5天4晚、两人，偏寺庙、樱花、咖啡和人文古迹和，住町屋').title === '京都奈良 5 日 · 寺庙与樱花')
+ok('第一句话标题：目的地带周边、主题取前两项', askTitle('深圳周边3天2晚、一家三口，偏亲子与海边，住较场尾', 3) === '深圳周边 3 日 · 亲子与海边')
+ok('第一句话认不出目的地就不硬凑', askTitle('帮我规划一下下个月出去玩的行程，想轻松一点的那种安排', 2) === '')
+ok('模型写成问句的标题会被换掉', tripTitle({ title: '1. 樱花季具体日期定了吗？', days: [{ theme: '京都岚山' }, { theme: '奈良' }] }) === '京都 2 日行程')
+ok('正常标题原样保留', tripTitle({ title: '京都奈良 5 日寺社之旅', days: [{}] }) === '京都奈良 5 日寺社之旅')
+
+const noon = Date.parse('2026-10-11T04:00:00Z')
+ok('没登录不能用服务端模型', takeQuota('', 2, { file, now: noon }).ok === false)
+ok('登录后按次计数', takeQuota(again.token, 2, { file, now: noon }).used === 1 && takeQuota(again.token, 2, { file, now: noon }).used === 2)
+ok('当天用满就拒绝', takeQuota(again.token, 2, { file, now: noon }).ok === false && quotaLeft(again.token, 2, { file, now: noon }) === 0)
+ok('另一个账号的次数不受影响', quotaLeft(second.token, 2, { file, now: noon }) === 2)
+ok('第二天次数重置', quotaLeft(again.token, 2, { file, now: noon + 24 * 3600 * 1000 }) === 2)
+
+const fakeServer = { provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-server-secret-0000000000', baseUrl: '' }
+const yes = () => ({ ok: true })
+const picked = pickModel({ apiKey: '', messages: [1] }, 'tok', 'plan', { server: fakeServer, quota: yes })
+ok('没填密钥时用服务端模型', picked.apiKey === fakeServer.apiKey && picked.model === 'deepseek-chat')
+ok('自己填了密钥就用自己的，不扣服务端次数', pickModel({ apiKey: 'sk-own-key-1234567890abcd', model: 'm', provider: 'openai' }, '', 'plan', { server: fakeServer, quota: () => { throw new Error('不该计次') } }).provider === 'openai')
+ok('服务端次数用完给出提示', (() => { try { pickModel({ apiKey: '' }, 'tok', 'plan', { server: fakeServer, quota: () => ({ ok: false, error: '今天的 2 次已经用完' }) }); return false } catch (err) { return /用完/.test(err.message) } })())
+ok('分流请求单独封顶，不占用户次数', (() => {
+  const calls = []
+  pickModel({ apiKey: '' }, 'tok', 'route', { server: fakeServer, quota: (t, limit, opts) => { calls.push({ limit, bucket: opts?.bucket }); return { ok: true } } })
+  return calls.length === 1 && calls[0].bucket === 'route' && calls[0].limit > 10
+})())
+ok('分流请求伪装不了：封顶后同样拦下', takeQuota(again.token, 1, { file, now: noon, bucket: 'route' }).ok && takeQuota(again.token, 1, { file, now: noon, bucket: 'route' }).ok === false && quotaLeft(again.token, 2, { file, now: noon }) === 0)
+ok('服务端没配模型时仍要求填 API Key', (() => { try { pickModel({ apiKey: '' }, 'tok', 'plan', { server: null }); return false } catch (err) { return /API Key/.test(err.message) } })())
+
+const savedEnv = { ...process.env }
+Object.assign(process.env, {
+  LLM_PROVIDER: 'deepseek', LLM_MODEL: 'deepseek-chat', LLM_API_KEY: 'sk-env-secret-123456789',
+  AMAP_KEY: 'amap-secret-1', TIANDITU_KEY: 'tdt-secret-1',
+  SEARCH_KEY: 'search-secret-1', SEARCH_PROVIDER: 'bocha', LLM_DAILY_LIMIT: '30',
+})
+const pub = JSON.stringify(publicConfig())
+ok('配置接口只说配没配，不回传密钥', pub.includes('"amap":true') && pub.includes('"tianditu":true') && pub.includes('"dailyLimit":30') && !/secret/.test(pub))
+const keys = dataKeys({ amapKey: '', tiandituKey: '', searchKey: '' })
+ok('地图和搜索没填时用服务端的', keys.amapKey === 'amap-secret-1' && keys.tiandituKey === 'tdt-secret-1' && keys.searchKey === 'search-secret-1' && keys.searchProvider === 'bocha')
+ok('用户自己填的地图和搜索优先', dataKeys({ amapKey: 'mine', searchKey: 'mine2', searchProvider: 'tavily' }).searchProvider === 'tavily' && dataKeys({ amapKey: 'mine' }).amapKey === 'mine')
+for (const key of ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY', 'AMAP_KEY', 'TIANDITU_KEY', 'SEARCH_KEY', 'SEARCH_PROVIDER', 'LLM_DAILY_LIMIT']) {
+  if (key in savedEnv) process.env[key] = savedEnv[key]
+  else delete process.env[key]
+}
 
 const smtp = await new Promise((resolve) => {
   const letters = []

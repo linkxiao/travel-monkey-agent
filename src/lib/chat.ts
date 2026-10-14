@@ -11,6 +11,7 @@ export async function streamChat(opts: {
   messages: ChatMessage[]
   mode?: 'plan' | 'fill' | 'talk' | 'edit' | 'look' | 'route'
   images?: string[]
+  authToken?: string
   onDelta: (text: string) => void
   signal?: AbortSignal
 }) {
@@ -18,7 +19,10 @@ export async function streamChat(opts: {
   try {
     res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.authToken ? { Authorization: `Bearer ${opts.authToken}` } : {}),
+      },
       body: JSON.stringify({
         provider: opts.provider,
         model: opts.model,
@@ -56,4 +60,33 @@ export async function streamChat(opts: {
       if (json.delta) opts.onDelta(json.delta)
     }
   }
+}
+
+export type ServerConfig = {
+  model: { provider: string; model: string } | null
+  amap: boolean
+  tianditu?: boolean
+  search: boolean
+  dailyLimit: number
+}
+
+export async function fetchQuotaLeft(token: string): Promise<number | null> {
+  if (!token) return null
+  try {
+    const res = await fetch('/api/auth/quota', { headers: { Authorization: `Bearer ${token}` } })
+    const data = (await res.json()) as { left?: number | null }
+    return typeof data.left === 'number' ? data.left : null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchServerConfig(): Promise<ServerConfig> {
+  try {
+    const res = await fetch('/api/config')
+    if (res.ok) return (await res.json()) as ServerConfig
+  } catch {
+    // 拿不到就按「服务端什么都没配」处理
+  }
+  return { model: null, amap: false, tianditu: false, search: false, dailyLimit: 0 }
 }

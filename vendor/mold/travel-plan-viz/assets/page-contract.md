@@ -85,7 +85,7 @@ const trip = {
           openingHours: "全天开放",        // 可选
           closedDays: "周一休",            // 可选，无则省略
           ticketPrice: "免费 / 缆车套票约 ¥88",  // 可选，参考价（非实时）
-          transport: { mode: "天星小轮", fare: "约 ¥3", duration: "约 10 分钟", actionLink }, // 可选：如何到达本点；actionLink 可选={label,url}，仅当来自官方地图 skill 的路线规划/导航链接（高德/腾讯/滴滴）
+          transport: { mode: "天星小轮", distance: "约 1.2 公里", fare: "公交约 ¥3；打车约 ¥28", duration: "约 10 分钟", actionLink }, // 可选：如何到达本点；distance/fare 可由本机高德补；actionLink 可选={label,url}，仅官方导航链
           seasonal: "暑期限定灯光秀（6/12–8/31）",  // 可选：时令活动
           needsBooking: false,
           leadDays: 0

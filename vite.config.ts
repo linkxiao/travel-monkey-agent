@@ -10,6 +10,7 @@ import { handlePhotoProxy } from './server/photos.mjs'
 import { handleResearch } from './server/research.mjs'
 import { handleUpload } from './server/uploads.mjs'
 import { handleAuth } from './server/users.mjs'
+import { handleConfig } from './server/config.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const assetsRoot = path.join(__dirname, 'travel-assets')
@@ -61,6 +62,9 @@ function localAssets(): Plugin {
           return
         }
         handleResearch(req, res)
+      })
+      server.middlewares.use('/api/config', (req, res) => {
+        handleConfig(req, res)
       })
       server.middlewares.use('/api/auth', (req, res) => {
         handleAuth(req, res)

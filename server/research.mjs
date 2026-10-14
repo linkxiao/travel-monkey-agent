@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import { parseOpenText } from './hours.mjs'
+import { dataKeys } from './config.mjs'
+import { searchWeb } from './search.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -142,28 +144,6 @@ function toWgs(lat, lng) {
   const nlng = Number(lng)
   if (!Number.isFinite(nlat) || !Number.isFinite(nlng)) return null
   return mapJs.gcj02ToWgs84(nlat, nlng)
-}
-
-async function searchWeb(query, { searchKey, searchProvider }) {
-  if (!searchKey) return []
-  if (searchProvider === 'serper') {
-    const res = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-KEY': searchKey },
-      body: JSON.stringify({ q: query, num: 5 }),
-      signal: AbortSignal.timeout(10000),
-    })
-    const data = await res.json()
-    return (data.organic || []).slice(0, 5).map((x) => ({ title: x.title, snippet: x.snippet, url: x.link }))
-  }
-  const res = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: searchKey, query, max_results: 5, search_depth: 'basic' }),
-    signal: AbortSignal.timeout(10000),
-  })
-  const data = await res.json()
-  return (data.results || []).slice(0, 5).map((x) => ({ title: x.title, snippet: x.content, url: x.url }))
 }
 
 function wgs84ToGcj02(lat, lng) {
@@ -366,7 +346,7 @@ function readJsonBody(req) {
 export async function handleResearch(req, res) {
   try {
     const body = await readJsonBody(req)
-    const out = await researchQuery(body)
+    const out = await researchQuery({ ...body, ...dataKeys(body) })
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(out))
   } catch (err) {

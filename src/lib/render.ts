@@ -13,6 +13,7 @@ export async function renderTripPage(trip: Trip, opts?: {
   photoDays?: number[]
   photoQuery?: string
   amapKey?: string
+  tiandituKey?: string
   searchKey?: string
   searchProvider?: string
 }) {
@@ -35,6 +36,7 @@ export async function renderTripPage(trip: Trip, opts?: {
         photoDays: opts?.photoDays,
         photoQuery: opts?.photoQuery,
         amapKey: opts?.amapKey,
+        tiandituKey: opts?.tiandituKey,
         searchKey: opts?.searchKey,
         searchProvider: opts?.searchProvider,
       }),

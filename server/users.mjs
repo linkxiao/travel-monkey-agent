@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { deliverCode } from './deliver.mjs'
+import { dailyLimit } from './config.mjs'
 
 const DEFAULT_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '.users.sqlite')
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000
@@ -72,6 +73,12 @@ const SCHEMA = `
     used INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS verify_target ON verify_codes(target, purpose, created_at);
+  CREATE TABLE IF NOT EXISTS usage (
+    user_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
 `
 
 function createSchema(db) {
@@ -124,6 +131,12 @@ function ensureSchema(db) {
       used INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS verify_target ON verify_codes(target, purpose, created_at);
+    CREATE TABLE IF NOT EXISTS usage (
+      user_id INTEGER NOT NULL,
+      day TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day)
+    );
   `)
 }
 
@@ -337,6 +350,41 @@ export function sessionUser(token, file = DEFAULT_FILE) {
   return { ok: true, username: found.username }
 }
 
+function today(now = Date.now()) {
+  return new Date(now + 8 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
+// 用服务端模型的次数：按账号按天（北京时间）计，超过上限就拒绝
+export function takeQuota(token, limit, { file = DEFAULT_FILE, now = Date.now(), bucket = '' } = {}) {
+  const db = openDb(file)
+  const found = token ? userFromToken(db, token) : null
+  if (!found) return { ok: false, error: '用服务端模型需要先登录。' }
+  const day = bucket ? `${today(now)}:${bucket}` : today(now)
+  return withWrite(db, () => {
+    const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, day)
+    const used = row ? Number(row.count) : 0
+    if (used >= limit && bucket) return { ok: false, used, limit, error: '今天的请求太频繁，明天再来；也可改用自己的模型密钥继续。' }
+    if (used >= limit) return { ok: false, used, limit, error: `今天的 ${limit} 次已经用完，明天再来；也可改用自己的模型密钥继续。` }
+    db.prepare(`
+      INSERT INTO usage (user_id, day, count) VALUES (?, ?, 1)
+      ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1
+    `).run(found.user.id, day)
+    return { ok: true, used: used + 1, limit }
+  })
+}
+
+export function quotaLeft(token, limit, { file = DEFAULT_FILE, now = Date.now() } = {}) {
+  const db = openDb(file)
+  const found = token ? userFromToken(db, token) : null
+  if (!found) return null
+  const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, today(now))
+  return Math.max(0, limit - (row ? Number(row.count) : 0))
+}
+
+export function bearerToken(req) {
+  return bearer(req)
+}
+
 export function logoutUser(token, file = DEFAULT_FILE) {
   const db = openDb(file)
   withWrite(db, () => {
@@ -371,6 +419,7 @@ export async function handleAuth(req, res) {
     const route = url.pathname.replace(/^\/api\/auth/, '') || '/'
     const token = bearer(req)
     if (req.method === 'GET' && route === '/session') return send(200, sessionUser(token))
+    if (req.method === 'GET' && route === '/quota') return send(200, { left: quotaLeft(token, dailyLimit()), limit: dailyLimit() })
     if (req.method !== 'POST') return send(405, { ok: false, error: '这个地址不接受该请求' })
     const body = JSON.parse((await readBody(req)) || '{}')
     if (route === '/code') return send(200, await requestVerify({ purpose: body.purpose, account: body.account }))

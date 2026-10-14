@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
-import { streamChat, type ChatMessage } from './lib/chat'
+import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type ServerConfig } from './lib/chat'
 import { copyHtml, exportH5, exportImage, sharePage } from './lib/export'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
@@ -8,12 +8,13 @@ import { fetchResearch, type ResearchBrief } from './lib/research'
 import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { AccountDialog, type AuthInput, type AuthScreen, type AuthSuccess } from './AccountDialog'
+import { AlpineScene } from './AlpineScene'
 import { TOKEN_KEY, fetchSession, loginAccount, logoutAccount, registerAccount, requestAuthCode } from './lib/auth'
 import { todayAdvice } from './lib/today'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
 import { buildChatMessages, buildFillMessages, buildPlanMessages, userPack } from './lib/context'
 import { buildRouteMessages, carryLine, isNewTask, localTurn, parseTurn, planPrefs, tripHead, tripNames, type PrefPlan, type Turn } from './lib/route'
-import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionTitle, type SessionData, type SessionMeta } from './lib/session'
+import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionOwner, sessionPointerKey, sessionTitle, setSessionOwner, type SessionData, type SessionMeta } from './lib/session'
 import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, mentionedDay, photoOutcome, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
 
 const THEME_IDS = ['terracotta', 'matcha', 'ink', 'coast', 'rose', 'slate', 'sand', 'night']
@@ -37,6 +38,8 @@ function isConfirm(text: string) {
 }
 
 type Bubble = { role: 'user' | 'assistant'; text: string; pending?: boolean }
+
+const OWN_KEY_HINT = /改用自己的(?:模型)?密钥|次已经用完|请求太频繁/
 
 const EXAMPLES = [
   '京都、奈良5天4晚、两人，偏寺庙、樱花、咖啡和人文古迹和，住町屋',
@@ -87,8 +90,9 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false)
   const [skillLabel, setSkillLabel] = useState('')
   const [amapKey, setAmapKey] = useState(() => loadSetting('ct.amap', ''))
+  const [tiandituKey, setTiandituKey] = useState(() => loadSetting('ct.tianditu', ''))
   const [searchKey, setSearchKey] = useState(() => loadSetting('ct.search', ''))
-  const [searchProvider, setSearchProvider] = useState(() => loadSetting('ct.searchPv', 'tavily'))
+  const [searchProvider, setSearchProvider] = useState(() => loadSetting('ct.searchPv', 'bocha'))
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [planDraft, setPlanDraft] = useState('')
@@ -112,7 +116,85 @@ export default function App() {
   const [sessionList, setSessionList] = useState<SessionMeta[]>([])
   const [hydrated, setHydrated] = useState(false)
   const createdRef = useRef(Date.now())
+  const seedRef = useRef('')
   const [seedList, setSeedList] = useState<Array<{ id: string; title: string }>>([])
+  const [serverCfg, setServerCfg] = useState<ServerConfig>({ model: null, amap: false, tianditu: false, search: false, dailyLimit: 0 })
+  const [ownKey, setOwnKey] = useState(() => loadSetting('ct.ownKey', '') === '1')
+  const [quotaLeft, setQuotaLeft] = useState<number | null>(null)
+  const serverModel = Boolean(serverCfg.model) && !ownKey
+  const ownKeyPanelRef = useRef<HTMLDetailsElement>(null)
+  const focusOwnKeyRef = useRef(false)
+
+  useEffect(() => {
+    void fetchServerConfig().then(setServerCfg)
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('ct.ownKey', ownKey ? '1' : '') } catch { /* ignore */ }
+  }, [ownKey])
+
+  function revealOwnKeyPanel() {
+    const el = ownKeyPanelRef.current
+    if (!el) return
+    el.open = true
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      el.querySelector<HTMLInputElement>('input[type="password"], input:not([type])')?.focus()
+    })
+  }
+
+  function switchToOwnKey() {
+    focusOwnKeyRef.current = true
+    if (ownKey) revealOwnKeyPanel()
+    else setOwnKey(true)
+  }
+
+  // 额度提示保持原话，只把「改用自己的模型密钥」这句变成行内可点按钮
+  function renderQuotaText(text: string): ReactNode {
+    const re = /(；?\s*)(?:或点[上下方]*「改用自己的(?:模型)?密钥」[^。；]*|也可改用自己的模型密钥继续)/g
+    const nodes: ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    let k = 0
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) nodes.push(<Fragment key={k++}>{text.slice(last, m.index)}</Fragment>)
+      nodes.push(
+        <Fragment key={k++}>
+          {m[1] ? '；' : null}也可「
+          <button type="button" className="link-btn bubble-link-inline" onClick={switchToOwnKey}>改用自己的模型密钥</button>
+          」继续
+        </Fragment>,
+      )
+      last = m.index + m[0].length
+    }
+    if (last < text.length) nodes.push(<Fragment key={k++}>{text.slice(last)}</Fragment>)
+    return <>{nodes}</>
+  }
+
+  useEffect(() => {
+    if (!ownKey) return
+    if (focusOwnKeyRef.current) {
+      focusOwnKeyRef.current = false
+      revealOwnKeyPanel()
+      return
+    }
+    if (!apiKey.trim() && ownKeyPanelRef.current) ownKeyPanelRef.current.open = true
+  }, [ownKey])
+
+  function refreshQuota() {
+    if (!serverCfg.model) return
+    void fetchQuotaLeft(authTokenRef.current).then(setQuotaLeft)
+  }
+
+  useEffect(() => {
+    if (authUser) refreshQuota()
+    else setQuotaLeft(null)
+  }, [authUser, serverCfg.model])
+
+  function chatAuth() {
+    if (serverModel) return { provider: '', model: '', apiKey: '', authToken: authTokenRef.current }
+    return { provider: providerId, model, apiKey: sanitizeApiKey(apiKey), customBaseUrl }
+  }
 
   useEffect(() => {
     fetch('/seed/list.json')
@@ -141,9 +223,10 @@ export default function App() {
     localStorage.setItem('ct.base', customBaseUrl)
     localStorage.setItem('ct.customModel', customModel)
     localStorage.setItem('ct.amap', amapKey)
+    localStorage.setItem('ct.tianditu', tiandituKey)
     localStorage.setItem('ct.search', searchKey)
     localStorage.setItem('ct.searchPv', searchProvider)
-  }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, searchKey, searchProvider])
+  }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, tiandituKey, searchKey, searchProvider])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
@@ -182,7 +265,7 @@ export default function App() {
 
   useEffect(() => {
     if (loadSetting('ct.keyBad', '') && sanitizeApiKey(apiKey)) {
-      setError('上次这个密钥没通过，浏览器还记着旧的。请到官网复制新的，粘贴到上方后再发。')
+      setError('上次这个密钥没通过，浏览器还记着旧的。请到官网复制新的，粘贴到下方后再发。')
     }
   }, [])
 
@@ -200,25 +283,28 @@ export default function App() {
     let alive = true
     const token = authTokenRef.current
     if (!token) {
+      clearWorkspaceForGuest()
       setAuthReady(true)
       return
     }
-    void fetchSession(token).then((remote) => {
+    void fetchSession(token).then(async (remote) => {
       if (!alive) return
       if (!remote) {
         authTokenRef.current = ''
         try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+        clearWorkspaceForGuest()
         setAuthReady(true)
         return
       }
       setAuthUser(remote.username)
-      setAuthReady(true)
+      await hydrateForUser(remote.username)
+      if (alive) setAuthReady(true)
     })
     return () => { alive = false }
   }, [])
 
   function rememberSessionId(id: string) {
-    try { localStorage.setItem('ct.session', id) } catch { /* ignore */ }
+    try { localStorage.setItem(sessionPointerKey(), id) } catch { /* ignore */ }
   }
 
   function resetWorkspace(s?: SessionData) {
@@ -237,30 +323,43 @@ export default function App() {
     setAttachments([])
     setInput('')
     createdRef.current = s?.createdAt || Date.now()
+    seedRef.current = s?.seedId || ''
   }
 
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const id = loadSetting('ct.session', '')
-      const saved = id ? await loadSession(id).catch(() => null) : null
-      if (!alive) return
-      if (saved) {
-        resetWorkspace(saved)
-        setSessionId(saved.id)
-      } else {
-        const fresh = newSessionId()
-        rememberSessionId(fresh)
-        setSessionId(fresh)
-      }
-      setSessionList(await listSessions().catch(() => []))
-      if (alive) setHydrated(true)
-    })()
-    return () => { alive = false }
-  }, [])
+  // 按当前登录账号装载历史；未登录不读库，避免串到上一账号
+  async function hydrateForUser(username: string) {
+    // 先停自动保存并清空界面，再切库，避免把上一账号的对话写进新库
+    setHydrated(false)
+    resetWorkspace()
+    setSessionId('')
+    setSessionList([])
+    setSessionOwner(username)
+    const id = loadSetting(sessionPointerKey(), '')
+    const saved = id ? await loadSession(id).catch(() => null) : null
+    if (saved) {
+      resetWorkspace(saved)
+      setSessionId(saved.id)
+    } else {
+      const fresh = newSessionId()
+      rememberSessionId(fresh)
+      setSessionId(fresh)
+    }
+    setSessionList(await listSessions().catch(() => []))
+    setHydrated(true)
+  }
+
+  function clearWorkspaceForGuest() {
+    setHydrated(false)
+    resetWorkspace()
+    setSessionId('')
+    setSessionList([])
+    setSessionOwner('')
+  }
 
   async function persistNow() {
-    if (!hydrated || !sessionId) return
+    // 未登录或还没切到账号库时不写，免得写进别人的空间
+    if (!hydrated || !sessionId || !authUser) return
+    const forUser = authUser.trim().toLowerCase()
     const data: SessionData = {
       id: sessionId,
       title: '',
@@ -273,11 +372,15 @@ export default function App() {
       persona: planningPersona,
       research: researchRef.current,
       versions,
+      ...(seedRef.current ? { seedId: seedRef.current } : {}),
     }
     if (isEmptySession(data) && !sessionList.some((s) => s.id === sessionId)) return
     data.title = sessionTitle(data)
     try {
+      // 异步间隙若已换账号，丢掉这次写入
+      if (sessionOwner() !== forUser) return
       await saveSession(data)
+      if (sessionOwner() !== forUser) return
       setSessionList(await listSessions())
       // 旧版把版本放在 localStorage，进了会话就不再要它
       localStorage.removeItem('ct.versions')
@@ -339,6 +442,7 @@ export default function App() {
     const out = await renderTripPage(next, {
       ...opts,
       amapKey: amapKey.trim() || undefined,
+      tiandituKey: tiandituKey.trim() || undefined,
       searchKey: searchKey.trim() || undefined,
       searchProvider,
     })
@@ -376,7 +480,7 @@ export default function App() {
     const next = preferId && THEME_IDS.includes(preferId)
       ? preferId
       : THEME_IDS[(THEME_IDS.indexOf(cur) + 1 + THEME_IDS.length) % THEME_IDS.length] || THEME_IDS[0]
-    const out = await applyTrip(trip, { themeId: next, skipPhotos: true, skipTransport: true })
+    const out = await applyTrip(trip, { themeId: next, skipPhotos: true })
     showToast(out.fallback ? '换皮未通过校验，已回退陶土模具' : `已换皮：${out.themeName || next}`)
     return out
   }
@@ -388,9 +492,17 @@ export default function App() {
         showToast('没有找到本地示例行程表')
         return
       }
+      // 同一个示例只占一个会话：载入过就切过去，没载入过才另开
+      const opened = sessionList.find((s) => s.seedId === id)
+      if (opened) {
+        await switchTrip(opened.id)
+        showToast('这个示例之前载入过，已切过去')
+        return
+      }
       const data = await res.json()
       if (trip || planDraft || bubbles.length) await newTrip()
-      const out = await applyTrip(data, { skipPhotos: true, skipTransport: true })
+      seedRef.current = id
+      const out = await applyTrip(data, { skipPhotos: true })
       setPlanDraft('')
       setPlanAnswers([])
       setPlanningPersona('')
@@ -420,12 +532,12 @@ export default function App() {
 
   async function ensureResearch(query: string) {
     if (researchRef.current.done && researchRef.current.query === query) return researchRef.current
-    if (!amapKey.trim() && !searchKey.trim()) {
+    if (!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search) {
       researchRef.current = {
         done: true,
         query,
-        brief: '无 Key 模式：坐标、交通、酒店价格均为模型记忆参考，出行前请以官方渠道核实。',
-        sources: [{ name: '模型记忆', scope: '无 Key 参考', realtime: false }],
+        brief: '无地图/搜索 Key：出页仍按坐标做本地距离与打车估价；坐标与酒店价多为模型参考，出行前请以官方渠道核实。',
+        sources: [{ name: '本地路网估算', scope: '无 Key 时按坐标估算交通', realtime: false }],
         hotelsByTier: undefined,
       }
       return researchRef.current
@@ -434,6 +546,7 @@ export default function App() {
       const research = await fetchResearch({
         query,
         amapKey: amapKey.trim(),
+        tiandituKey: tiandituKey.trim(),
         searchKey: searchKey.trim(),
         searchProvider,
       })
@@ -458,10 +571,7 @@ export default function App() {
     abortRef.current = ac
     let acc = ''
     await streamChat({
-      provider: providerId,
-      model,
-      apiKey: sanitizeApiKey(apiKey),
-      customBaseUrl,
+      ...chatAuth(),
       messages: history,
       mode,
       images,
@@ -479,6 +589,7 @@ export default function App() {
       },
     })
     try { localStorage.removeItem('ct.keyBad') } catch { /* ignore */ }
+    if (serverModel) refreshQuota()
     return { acc, signal: ac.signal }
   }
 
@@ -487,10 +598,10 @@ export default function App() {
   }
 
   function showFail(msg: string) {
-    const auth = isAuthFail(msg)
+    const auth = isAuthFail(msg) && !serverModel
     if (auth) rememberKeyFailed()
     setError(msg)
-    const chat = auth ? '密钥没通过。请在上方重新粘贴完整 Key 后再发。' : `出错了：${msg}`
+    const chat = auth ? '密钥没通过。请在下方重新粘贴完整模型密钥后再发。' : `出错了：${msg}`
     setBubbles((prev) => {
       const next = [...prev]
       const last = next[next.length - 1]
@@ -542,10 +653,11 @@ export default function App() {
       acc = filled.acc
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (isAuthFail(msg) || /连不上|密钥不完整/.test(msg)) throw err
+      if (isAuthFail(msg) || /连不上|密钥不完整|次已经用完|需要先登录/.test(msg)) throw err
     }
     const parsed = extractTrip(acc)
-    const nextTrip = parsed || tripFromPlan(plan)
+    const firstAsk = fresh ? '' : bubbles.find((b) => b.role === 'user' && b.text.trim())?.text || ''
+    const nextTrip = parsed || tripFromPlan(plan, firstAsk)
     if (!nextTrip || !Array.isArray(nextTrip.days) || !nextTrip.days.length) {
       throw new Error('确认大纲里还没有按天的安排。请先写出 D1 / D2 再出页。')
     }
@@ -654,7 +766,6 @@ export default function App() {
     const out = await applyTrip(nextTrip, {
       keepThemeId: keepThemeId || undefined,
       skipPhotos: !namesChanged,
-      skipTransport: !namesChanged,
     })
     // 验货：新名必须在渲染后的 HTML 里找得到，否则"进了表没上页"，不许说已写入
     const unseen = findUnseenInHtml(touched, out.html)
@@ -824,6 +935,12 @@ export default function App() {
   }
 
   function requireModelKey() {
+    if (serverModel) {
+      if (authTokenRef.current) return true
+      showToast('登录后就能直接用，不用填密钥')
+      openAuth('login')
+      return false
+    }
     const key = sanitizeApiKey(apiKey)
     const broken = keyLooksUnusable(key)
     if (broken) {
@@ -907,6 +1024,8 @@ export default function App() {
     try { localStorage.removeItem('ct.account') } catch { /* ignore */ }
     setAuthReady(true)
     setAuthError('')
+    // 换账号立刻切到该账号自己的行程库（新用户是空的）
+    void hydrateForUser(result.username)
   }
 
   function openAuth(screen: AuthScreen) {
@@ -923,7 +1042,7 @@ export default function App() {
   }
 
   async function submitAuth(input: AuthInput) {
-    if (!authScreen || authBusy) return
+    if (authBusy) return
     setAuthError('')
     setAuthBusy(true)
     try {
@@ -952,6 +1071,7 @@ export default function App() {
     setAuthScreen(null)
     setAuthSuccess(null)
     try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+    clearWorkspaceForGuest()
     if (token) void logoutAccount(token)
   }
 
@@ -967,10 +1087,7 @@ export default function App() {
     let acc = ''
     try {
       await streamChat({
-        provider: providerId,
-        model,
-        apiKey: sanitizeApiKey(apiKey),
-        customBaseUrl,
+        ...chatAuth(),
         messages: buildRouteMessages({ opening, head: tripHead(trip, planDraft), said: userPack(bubbles), text }),
         mode: 'route',
         signal: ac.signal,
@@ -1055,7 +1172,7 @@ export default function App() {
     const doLook = Boolean(pics.length && wantsVision(text, Boolean(trip)))
     const confirmPlan = Boolean(!trip && planDraft && isConfirm(text))
     const routed = Boolean((trip || planDraft) && text && !pics.length && !confirmPlan && !(trip && restyleOnly))
-    const keyReady = Boolean(sanitizeApiKey(apiKey))
+    const keyReady = serverModel ? Boolean(authTokenRef.current) : Boolean(sanitizeApiKey(apiKey))
     const preset: Turn | null = sameTask ? { ...localTurn('', '', null), action: 'edit' } : null
     const offline = routed && !keyReady ? (preset || localTurn(openingText(), text, tripDays)) : null
     const offlineNew = Boolean(offline && isNewTask(offline, text))
@@ -1170,33 +1287,56 @@ export default function App() {
     }
   }
 
+  const signedIn = Boolean(authUser)
+  // 没有本地 token 时不必显示「正在确认」——那只是等 useEffect 把 authReady 翻成 true
+  const authChecking = !authReady && Boolean(authTokenRef.current)
+
   return (
-    <div className="shell">
+    <div className={signedIn ? 'shell' : 'shell gate'}>
+      {!signedIn ? (
+        <>
+          <AlpineScene />
+          <div className="gate-mark">
+            <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true">
+              <path d="M1 15 L8.5 3 L12 8 L15 4.5 L21 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+            </svg>
+            Travel Monkey
+          </div>
+          <main className="gate-main">
+            <h1 className="gate-title">出发之前，<br />路线已经画好。</h1>
+            <p className="gate-lede">说出去哪、几个人、玩几天，行程就排好了。</p>
+            {authChecking ? (
+              <p className="gate-status">正在确认登录…</p>
+            ) : (
+              <AccountDialog
+                inline
+                screen={authScreen === 'register' ? 'register' : 'login'}
+                success={null}
+                username=""
+                error={authError}
+                busy={authBusy}
+                onClose={closeAuth}
+                onScreen={openAuth}
+                onSubmit={(input) => void submitAuth(input)}
+                onRequestCode={(input) => requestAuthCode(input)}
+                onSignOut={() => void signOut()}
+              />
+            )}
+          </main>
+        </>
+      ) : (
+      <>
       <aside className="pane">
         <header className="brand">
-          <div className="brand-kicker">TRAVEL MONKEY</div>
-          <h1>Travel <span>Monkey</span></h1>
-          <p>先选旅居、带队或探秘，再说想去哪、玩几天。选项确认后直接生成行程。</p>
-          {skillLabel && <p className="skill-ok">{skillLabel}</p>}
-          <div className="account-entry">
-            {!authReady && authTokenRef.current ? (
-              <span>正在确认登录…</span>
-            ) : authUser ? (
-              <button type="button" className="account-chip" onClick={() => openAuth('account')}>已登录 · {authUser}</button>
-            ) : (
-              <>
-                <button type="button" className="primary" onClick={() => openAuth('login')}>登录</button>
-                <button type="button" onClick={() => openAuth('register')}>注册</button>
-              </>
-            )}
-            <span>
-              {authUser
-                ? '已登录'
-                : !authReady && authTokenRef.current
-                  ? '正在核对登录状态'
-                  : '未登录。注册时设置密码，之后用邮箱和密码登录'}
-            </span>
+          <div className="brand-mark" title={skillLabel || undefined}>
+            <svg width="20" height="14" viewBox="0 0 22 16" aria-hidden="true">
+              <path d="M1 15 L8.5 3 L12 8 L15 4.5 L21 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+            </svg>
+            Travel Monkey
           </div>
+          <button type="button" className="account-chip" aria-label={`账号 ${authUser}`} title={authUser} onClick={() => openAuth('account')}>
+            {(authUser || '?').slice(0, 1).toUpperCase()}
+          </button>
         </header>
 
         <div className="session-bar">
@@ -1206,99 +1346,22 @@ export default function App() {
             onChange={(e) => void switchTrip(e.target.value)}
             title="历史行程：刷新页面也会接着上次"
           >
-            {!sessionList.some((s) => s.id === sessionId) && <option value={sessionId}>新行程（还没开始）</option>}
+            {!sessionList.some((s) => s.id === sessionId) && <option value={sessionId}>新行程</option>}
             {sessionList.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.title} · {new Date(s.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{s.stage === 'plan' ? ' · 大纲' : ''}
+                {s.title}（{new Date(s.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{s.stage === 'plan' ? '，大纲' : ''}）
               </option>
             ))}
           </select>
-          <button type="button" className="ghost" disabled={busy || !hydrated} onClick={() => void newTrip()}>新建行程</button>
+          <button type="button" className="icon-btn" aria-label="新建行程" title="新建行程" disabled={busy || !hydrated} onClick={() => void newTrip()}>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+          </button>
           {sessionList.some((s) => s.id === sessionId) && (
-            <button type="button" className="ghost" disabled={busy} onClick={() => void dropTrip(sessionId)}>删除</button>
+            <button type="button" className="icon-btn" aria-label="删除这个行程" title="删除这个行程" disabled={busy} onClick={() => void dropTrip(sessionId)}>
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" /></svg>
+            </button>
           )}
         </div>
-
-        <details className="controls" open={apiKey.trim() ? undefined : true}>
-          <summary>连接模型（填过可以收起）</summary>
-          <label>
-            <span>服务商</span>
-            <select
-              value={providerId}
-              onChange={(e) => {
-                const next = getProvider(e.target.value)
-                setProviderId(next.id)
-                setModelId(next.models[0].id)
-              }}
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
-          {providerId === 'custom' ? (
-            <>
-              <label>
-                <span>Base URL</span>
-                <input value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
-              </label>
-              <label>
-                <span>模型名</span>
-                <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="gpt-4o" />
-              </label>
-            </>
-          ) : (
-            <label>
-              <span>模型</span>
-              <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
-                {provider.models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label>
-            <span>API Key · 模型密钥，不是网页地址</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => {
-                const next = sanitizeApiKey(e.target.value)
-                setApiKey(next)
-                try { localStorage.removeItem('ct.keyBad') } catch { /* ignore */ }
-                setError((prev) => (isAuthFail(prev) ? '' : prev))
-              }}
-              placeholder={provider.keyHint}
-              autoComplete="off"
-            />
-          </label>
-          {looksLikePageUrl(apiKey) && (
-            <div className="err">这里应填 {provider.keyHint}，不要填 http://127.0.0.1:5177/</div>
-          )}
-          {!looksLikePageUrl(apiKey) && keyMismatchHint(providerId, apiKey) && (
-            <div className="err">{keyMismatchHint(providerId, apiKey)}</div>
-          )}
-          <div className="controls-row">
-            <label>
-              <span>高德 Web 服务 Key</span>
-              <input type="password" value={amapKey} onChange={(e) => setAmapKey(e.target.value)} placeholder="lbs.amap.com" autoComplete="off" />
-            </label>
-            <label>
-              <span>搜索 · 飞猪摘要</span>
-              <select value={searchProvider} onChange={(e) => setSearchProvider(e.target.value)}>
-                <option value="tavily">Tavily</option>
-                <option value="serper">Serper</option>
-              </select>
-            </label>
-          </div>
-          <label>
-            <span>搜索 Key · 可选，不能代订</span>
-            <input type="password" value={searchKey} onChange={(e) => setSearchKey(e.target.value)} placeholder="可选；有则点评店图优先" autoComplete="off" />
-          </label>
-          {!amapKey.trim() && !searchKey.trim() && (
-            <p className="plan-ask-hint">没填地图和搜索也能用：坐标、交通、酒店价按模型记忆参考，出行前请以官方渠道核实。</p>
-          )}
-        </details>
 
         {trip && (
           <div className="today-card">
@@ -1313,17 +1376,47 @@ export default function App() {
         )}
 
         <div className="log" ref={logRef}>
-          {bubbles.map((b, i) => (
-            <div key={i} className={`bubble ${b.role}`}>
-              <div className="who">{b.role === 'user' ? '你' : 'Agent'}{b.pending ? ' · 生成中' : ''}</div>
-              <div className="txt">{b.text || (b.pending ? '正在处理…' : '')}</div>
+          {!trip && bubbles.length === 0 && (
+            <div className="empty">
+              <h2>这趟想怎么走？</h2>
+              <div className="persona-list" role="radiogroup" aria-label="出行方式">
+                {PERSONAS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={planningPersona === p.id}
+                    className={planningPersona === p.id ? 'is-picked' : ''}
+                    disabled={busy}
+                    onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
+                  >
+                    <b>{p.label}</b>
+                    <span>{p.hint.replace(' · ', '，')}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="empty-k">也可以直接这样说</p>
+              <div className="example-list">
+                {EXAMPLES.map((ex) => (
+                  <button key={ex} type="button" title={ex} disabled={busy} onClick={() => setInput(ex)}>{ex}</button>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
+          {bubbles.map((b, i) => {
+            const actionable = b.role === 'assistant' && !b.pending && OWN_KEY_HINT.test(b.text || '')
+            return (
+              <div key={i} className={`bubble ${b.role}`}>
+                {b.pending && <div className="who">正在生成</div>}
+                <div className="txt">{actionable ? renderQuotaText(b.text || '') : (b.text || (b.pending ? '正在处理…' : ''))}</div>
+              </div>
+            )
+          })}
         </div>
 
         {prefOffer && (
           <div className="plan-ask pref-pick">
-            <div className="plan-ask-k">上一趟的偏好 · 勾选要沿用的</div>
+            <div className="plan-ask-k">上一趟的偏好，勾选要沿用的</div>
             <div className="pref-list">
               {prefOffer.prefs.map((p, i) => (
                 <label key={p} className={prefOffer.picked[i] ? 'on' : ''}>
@@ -1344,14 +1437,28 @@ export default function App() {
           </div>
         )}
 
-        {error && <div className="err">{error}</div>}
+        {error && (
+          <div className="err">
+            {/改用自己的(?:模型)?密钥|次已经用完|请求太频繁/.test(error) ? (
+              <>
+                {error
+                  .replace(/；?\s*或点[上下方]*「改用自己的(?:模型)?密钥」[^。；]*/g, '')
+                  .replace(/；?\s*也可改用自己的模型密钥继续/g, '')
+                  .replace(/[。；]\s*$/, '')}
+                。也可「
+                <button type="button" className="link-btn err-link" onClick={switchToOwnKey}>改用自己的模型密钥</button>
+                」继续。
+              </>
+            ) : error}
+          </div>
+        )}
         {report.errors.length > 0 && (
           <div className="err">校验：{report.errors.slice(0, 3).join('；')}</div>
         )}
 
         {askItems.length > 0 && (
           <div className="plan-ask">
-            <div className="plan-ask-k">{trip ? '待确认 · 选完确认后更新当前行程' : '待确认 · 选完确认后直接生成行程'}</div>
+            <div className="plan-ask-k">{trip ? '选完点确认，会更新当前行程' : '选完点确认，会直接生成行程'}</div>
             {askItems.map((item, i) => (
               <div key={item.question} className="plan-q">
                 <p>{i + 1}. {item.question}</p>
@@ -1391,33 +1498,22 @@ export default function App() {
           </div>
         )}
 
-        {!trip && (
-          <div className="plan-ask persona-pick">
-            <div className="plan-ask-k">规划人格 · 先选择再出计划</div>
-            <div className="plan-q-ops">
-              {PERSONAS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={planningPersona === p.id ? 'on' : ''}
-                  disabled={busy}
-                  onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
-                >
-                  {p.label} · {p.hint}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!trip && bubbles.length === 0 && (
-          <div className="plan-ask persona-pick">
-            <div className="plan-ask-k">输入示意</div>
-            <div className="plan-q-ops example-ops">
-              {EXAMPLES.map((ex) => (
-                <button key={ex} type="button" title={ex} disabled={busy} onClick={() => setInput(ex)}>{ex}</button>
-              ))}
-            </div>
+        {!trip && bubbles.length > 0 && (
+          <div className="persona-row" role="radiogroup" aria-label="出行方式">
+            {PERSONAS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={planningPersona === p.id}
+                title={p.hint}
+                className={planningPersona === p.id ? 'is-picked' : ''}
+                disabled={busy}
+                onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         )}
 
@@ -1456,8 +1552,8 @@ export default function App() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={trip || planDraft ? '' : '先选人格，再说想去哪、玩几天\n回车发送，Shift+回车换行'}
-            rows={4}
+            placeholder={trip || planDraft ? '想改哪里，直接说' : '说出去哪、几个人、玩几天'}
+            rows={3}
             onPaste={(e) => {
               const files = filesFromPaste(e)
               if (!files.length) return
@@ -1495,6 +1591,119 @@ export default function App() {
             </button>
           </div>
         </form>
+
+        <footer className="pane-foot">
+          {serverModel && (
+            <p className="model-line">
+              {serverCfg.model?.model}，{authUser ? `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次` : `每人每天 ${serverCfg.dailyLimit} 次`}
+              <button type="button" className="link-btn" onClick={switchToOwnKey}>改用自己的模型密钥</button>
+            </p>
+          )}
+          {!serverModel && (
+          <details className="controls" ref={ownKeyPanelRef}>
+            <summary className={apiKey.trim() ? undefined : 'need'}>{apiKey.trim() ? '模型：自己的模型密钥' : '先连接模型，才能生成行程'}</summary>
+            {serverCfg.model && (
+              <button type="button" className="ghost" onClick={() => setOwnKey(false)}>改回服务端模型（登录即用）</button>
+            )}
+            <label>
+              <span>服务商</span>
+              <select
+                value={providerId}
+                onChange={(e) => {
+                  const next = getProvider(e.target.value)
+                  setProviderId(next.id)
+                  setModelId(next.models[0].id)
+                }}
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+            {providerId === 'custom' ? (
+              <>
+                <label>
+                  <span>Base URL</span>
+                  <input value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+                </label>
+                <label>
+                  <span>模型名</span>
+                  <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="gpt-4o" />
+                </label>
+              </>
+            ) : (
+              <label>
+                <span>模型</span>
+                <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
+                  {provider.models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              <span>API Key</span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => {
+                  const next = sanitizeApiKey(e.target.value)
+                  setApiKey(next)
+                  try { localStorage.removeItem('ct.keyBad') } catch { /* ignore */ }
+                  setError((prev) => (isAuthFail(prev) ? '' : prev))
+                }}
+                placeholder={provider.keyHint}
+                autoComplete="off"
+              />
+            </label>
+            {looksLikePageUrl(apiKey) && (
+              <div className="err">这里填模型密钥（{provider.keyHint}），不是网页地址</div>
+            )}
+            {!looksLikePageUrl(apiKey) && keyMismatchHint(providerId, apiKey) && (
+              <div className="err">{keyMismatchHint(providerId, apiKey)}</div>
+            )}
+          </details>
+          )}
+          {!(serverCfg.amap && serverCfg.tianditu && serverCfg.search) && (
+            <details className="controls">
+              <summary>数据来源（可选）</summary>
+              {!serverCfg.tianditu && (
+                <label>
+                  <span>地图（推荐·天地图）：个人可申请，国内稳定；补距离/耗时/公交</span>
+                  <input type="password" value={tiandituKey} onChange={(e) => setTiandituKey(e.target.value)} placeholder="天地图控制台 · 服务端 Key" autoComplete="off" />
+                </label>
+              )}
+              {!serverCfg.amap && (
+                <label>
+                  <span>地图（可选·高德）：能力更全，需企业认证时可不填</span>
+                  <input type="password" value={amapKey} onChange={(e) => setAmapKey(e.target.value)} placeholder="高德 Web 服务 Key（可选）" autoComplete="off" />
+                </label>
+              )}
+              {!serverCfg.search && (
+                <>
+                  <div className="controls-row">
+                    <label>
+                      <span>联网搜索</span>
+                      <select value={searchProvider} onChange={(e) => setSearchProvider(e.target.value)}>
+                        <option value="bocha">博查（国内推荐）</option>
+                        <option value="tavily">Tavily</option>
+                        <option value="serper">Serper</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>搜索 Key</span>
+                      <input type="password" value={searchKey} onChange={(e) => setSearchKey(e.target.value)} placeholder="选填" autoComplete="off" />
+                    </label>
+                  </div>
+                  <p className="plan-ask-hint">补充航班、酒店片区、当季活动等公开信息。大陆网络优先博查。</p>
+                </>
+              )}
+              {!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search && (
+                <p className="plan-ask-hint">不填也能用：出页按坐标估算距离与打车价；景点坐标/酒店价仍多为模型参考，请以官方渠道核实。</p>
+              )}
+            </details>
+          )}
+        </footer>
       </aside>
 
       <main className="stage">
@@ -1503,7 +1712,7 @@ export default function App() {
             <button type="button" className={device === 'phone' ? 'on' : ''} onClick={() => setDevice('phone')}>手机</button>
             <button type="button" className={device === 'desktop' ? 'on' : ''} onClick={() => setDevice('desktop')}>桌面</button>
           </div>
-          <div className="actions">
+          {trip && <div className="actions">
             <button type="button" onClick={() => void restyle()}>换皮</button>
             {versions.length > 1 && (
               <>
@@ -1531,7 +1740,7 @@ export default function App() {
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
             <button type="button" onClick={() => void onImage()}>导出图片</button>
             <button type="button" className="primary" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
-          </div>
+          </div>}
         </div>
         <div className={`frame ${device}`}>
           <iframe ref={iframeRef} title="行程预览" srcDoc={previewDoc} sandbox="allow-scripts allow-same-origin allow-popups" />
@@ -1545,13 +1754,14 @@ export default function App() {
           )}
         </div>
       </main>
+      </>
+      )}
 
       {shareOpen && (
         <div className="modal" onClick={() => setShareOpen(false)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="sheet-k">一键分享</div>
             <h2>发给同伴</h2>
-            <p>H5 是单文件，微信/邮件直接传即可离线打开。系统分享会带上这个 HTML 文件。</p>
+            <p>H5 是一个单独的文件，微信或邮件直接传，对方离线也能打开。</p>
             <div className="sheet-actions">
               <button type="button" className="primary" onClick={() => void onShare()}>系统分享</button>
               <button type="button" onClick={() => void onCopy()}>复制 HTML</button>
@@ -1562,7 +1772,7 @@ export default function App() {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
-      {(authScreen || authSuccess) && (
+      {signedIn && (authScreen || authSuccess) && (
         <AccountDialog
           screen={authScreen || 'login'}
           success={authSuccess}

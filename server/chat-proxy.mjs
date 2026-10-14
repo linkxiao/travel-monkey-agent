@@ -1,6 +1,8 @@
 import dns from 'node:dns'
 import { applySkillSystem } from './skill-prompt.mjs'
 import { attachImages, loadImageForModel, MAX_IMAGES } from './images.mjs'
+import { dailyLimit, serverModel } from './config.mjs'
+import { bearerToken, takeQuota } from './users.mjs'
 
 dns.setDefaultResultOrder('ipv4first')
 
@@ -67,7 +69,7 @@ function formatError(err, provider, hadImages) {
     return 'API Key 填错了：当前值像是本机网页地址（127.0.0.1:5177），不是模型密钥。请在「API Key」填 sk- 开头的密钥，不要填网页地址。'
   }
   if (/authentication|invalid.*api key|incorrect api key|invalid_api_key/i.test(text)) {
-    if (provider === 'deepseek') return 'DeepSeek 不认当前密钥。请到 platform.deepseek.com 复制一份新的完整 Key，粘贴到上方后再发。'
+    if (provider === 'deepseek') return 'DeepSeek 不认当前密钥。请到 platform.deepseek.com 复制一份新的完整 Key，粘贴到下方后再发。'
     if (provider === 'openrouter') return 'OpenRouter 不认当前密钥。请确认是 sk-or- 开头的完整 Key，或把服务商改成 Key 对应的那一家。'
     if (provider) return `${provider} 不认当前密钥。请重新粘贴该服务商的完整 Key 后再发。`
     return '当前密钥无效。请重新粘贴完整 Key 后再发。'
@@ -264,6 +266,35 @@ async function streamAnthropic({ apiKey, model, messages }, res) {
   }
 }
 
+// 分流请求每条消息都会发一次，不占用户的次数，但单独封顶，防止有人把普通请求伪装成分流来白用
+export const ROUTE_FACTOR = 20
+
+// 用户填了自己的密钥就用自己的；没填且服务端配了模型，则要求登录并按天计次
+export function pickModel(body, token, modeName, { quota = takeQuota, server = serverModel() } = {}) {
+  const apiKey = String(body.apiKey || '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/["'`]/g, '').replace(/\s+/g, '')
+  if (!apiKey && server) {
+    const limit = dailyLimit()
+    const taken = modeName === 'route'
+      ? quota(token, limit * ROUTE_FACTOR, { bucket: 'route' })
+      : quota(token, limit)
+    if (!taken.ok) {
+      console.log(`[quota] ${modeName} 被拦下：${taken.error}`)
+      throw new Error(taken.error)
+    }
+    if (modeName !== 'route') console.log(`[quota] ${modeName} 扣 1 次，今天已用 ${taken.used}/${taken.limit}`)
+    return { provider: server.provider, model: server.model, apiKey: server.apiKey, customBaseUrl: server.baseUrl }
+  }
+  if (!apiKey) throw new Error('请先填写 API Key')
+  if (looksLikePageUrl(apiKey)) {
+    throw new Error('API Key 不能填网页地址。请填模型服务商发的 sk- 密钥，不要填 http://127.0.0.1:5177/')
+  }
+  if (/\*{2,}|…|\.{3}/.test(apiKey) || apiKey.length < 20) {
+    throw new Error('密钥不完整。请从官网重新复制一整段，不要用打码或截断的片段。')
+  }
+  if (!body.model) throw new Error('请选择模型')
+  return { provider: body.provider || '', model: body.model, apiKey, customBaseUrl: body.customBaseUrl }
+}
+
 export async function handleChat(req, res) {
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -272,19 +303,12 @@ export async function handleChat(req, res) {
   let hadImages = false
   try {
     const body = await readBody(req)
-    provider = body.provider || ''
-    const { model, messages: rawMessages, customBaseUrl, mode } = body
-    const apiKey = String(body.apiKey || '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/["'`]/g, '').replace(/\s+/g, '')
-    if (!apiKey) throw new Error('请先填写 API Key')
-    if (looksLikePageUrl(apiKey)) {
-      throw new Error('API Key 不能填网页地址。请填模型服务商发的 sk- 密钥，不要填 http://127.0.0.1:5177/')
-    }
-    if (/\*{2,}|…|\.{3}/.test(apiKey) || apiKey.length < 20) {
-      throw new Error('密钥不完整。请从官网重新复制一整段，不要用打码或截断的片段。')
-    }
-    if (!model) throw new Error('请选择模型')
+    const { messages: rawMessages, mode } = body
     if (!rawMessages?.length) throw new Error('消息为空')
     const modeName = ['plan', 'talk', 'edit', 'look', 'route'].includes(mode) ? mode : 'fill'
+    const picked = pickModel(body, bearerToken(req), modeName)
+    provider = picked.provider
+    const { model, apiKey, customBaseUrl } = picked
 
     const wanted = (Array.isArray(body.images) ? body.images : []).filter(Boolean)
     if (wanted.length > MAX_IMAGES) {

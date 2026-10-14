@@ -9,6 +9,7 @@ import { handlePhotoProxy } from './photos.mjs'
 import { handleResearch } from './research.mjs'
 import { handleUpload } from './uploads.mjs'
 import { handleAuth } from './users.mjs'
+import { handleConfig } from './config.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.join(__dirname, '..', 'dist')
@@ -53,6 +54,9 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/upload') {
     return handleUpload(req, res)
+  }
+  if (url.pathname === '/api/config') {
+    return handleConfig(req, res)
   }
   if (url.pathname.startsWith('/api/auth')) {
     return handleAuth(req, res)

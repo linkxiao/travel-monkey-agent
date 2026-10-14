@@ -12,6 +12,7 @@ export type ResearchBrief = {
 export async function fetchResearch(opts: {
   query: string
   amapKey?: string
+  tiandituKey?: string
   searchKey?: string
   searchProvider?: string
 }): Promise<ResearchBrief> {

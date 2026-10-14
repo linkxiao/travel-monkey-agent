@@ -24,13 +24,17 @@ npm run dev
 
 运行时不再依赖仓库外的目录。`vendor/mold` 是 travel-plan-viz 的完整副本（出页脚本、校验、坐标、契约、调研/美学/移植说明、样例页、种子 JSON、单测），许可见 `vendor/mold/LICENSE`（Copyright 2026 zexuanw958-svg，MIT）。种子页在 `seed/shudao-zhongqiu.html`，配图在 `travel-assets/xian/`。用户粘贴的图片写入 `travel-assets/uploads/`，不进版本库。
 
-## 密钥（都只存在浏览器本地）
+## 密钥
 
-- **模型 API Key**：每次请求随 `/api/chat` 带给服务端转发，服务端不落盘
-- **高德 Web 服务 Key**（可选）：地理编码 / POI / 天气 / 步行或公交路线；坐标转 WGS-84
-- **Tavily 或 Serper Key**（可选）：航班、酒店、时令公开页摘要。没有飞猪官方预订接口，不会代下单
+两种方式都支持，用户自己填的优先：
 
-没有高德/搜索 Key 时仍可规划并出页，数据标「参考」。
+- **服务端统一配置**：在 `.env` 填 `LLM_PROVIDER` / `LLM_MODEL` / `LLM_API_KEY`（见 `.env.example`）后，页面不再显示模型和密钥输入框，改为「模型已就绪」。服务端模型只给登录用户用，每人每天 `LLM_DAILY_LIMIT` 次（默认 10，北京时间零点重置；内部分流请求不计次）。`TIANDITU_KEY` / `AMAP_KEY`、`SEARCH_PROVIDER` / `SEARCH_KEY` 配了之后，页面上对应的输入项也会隐藏。`/api/config` 只返回「配没配」，不回传任何密钥。
+- **用户自己填**：服务端没配，或用户点「改用自己的模型密钥」时，在页面填写，只存在浏览器本地，每次请求随 `/api/chat` 带给服务端转发，服务端不落盘。
+  - **模型 API Key**
+  - **地图（推荐天地图 `TIANDITU_KEY`，可选高德 `AMAP_KEY`）**：优先级 高德 > 天地图 > 本地直线估算。天地图个人可申请、国内稳定；高德能力更全但认证更麻烦
+  - **联网搜索（推荐博查，或 Tavily / Serper）**：航班、酒店片区、当季活动等公开信息摘要；不会代下单
+
+没有地图 Key 时仍可出页：程序按坐标估算距离与打车价（非实测路网）；景点坐标/酒店价仍多为模型参考。
 
 ## 模型
 
