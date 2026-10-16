@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { renderSVG } from 'uqr'
 import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
 import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type ServerConfig } from './lib/chat'
+import { copyText } from './lib/clipboard'
 import { exportH5, exportImage, publishShare, shareReach } from './lib/export'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
@@ -126,6 +127,7 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null)
   const runIdRef = useRef(0)
   const logRef = useRef<HTMLDivElement>(null)
+  const shareLinkRef = useRef<HTMLInputElement>(null)
   const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier']; openHours?: ResearchBrief['openHours'] }>({})
   const authTokenRef = useRef(loadSetting(TOKEN_KEY, ''))
   const [sessionId, setSessionId] = useState('')
@@ -148,6 +150,27 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('app-locked', Boolean(authUser))
     return () => document.documentElement.classList.remove('app-locked')
+  }, [authUser])
+
+  // 手机键盘顶起时用 visualViewport 校正壳高度，避免底栏/输入被裁切
+  useEffect(() => {
+    if (!authUser) return
+    const root = document.documentElement
+    const vv = window.visualViewport
+    const sync = () => {
+      const h = vv?.height ?? window.innerHeight
+      root.style.setProperty('--app-vh', `${Math.round(h)}px`)
+    }
+    sync()
+    vv?.addEventListener('resize', sync)
+    vv?.addEventListener('scroll', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      vv?.removeEventListener('resize', sync)
+      vv?.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+      root.style.removeProperty('--app-vh')
+    }
   }, [authUser])
 
   useEffect(() => {
@@ -280,14 +303,6 @@ export default function App() {
   }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, tiandituKey, searchKey, searchProvider, searchFallbackKey, searchFallbackProvider])
 
   useEffect(() => {
-    const el = logRef.current
-    if (!el) return
-    // 手机上用瞬间滚动，避免 smooth 与手势抢滚动造成抖动
-    const smooth = !window.matchMedia('(max-width: 900px)').matches
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-  }, [bubbles, busy])
-
-  useEffect(() => {
     if (!generating) return
     let raf = 0
     const place = () => {
@@ -318,6 +333,13 @@ export default function App() {
     setPlanAnswers(askItems.map((item) => pickedByQuestion.current[item.question] || ''))
     setAskWriting({})
   }, [askKey])
+  useEffect(() => {
+    const el = logRef.current
+    if (!el) return
+    // 手机上用瞬间滚动，避免 smooth 与手势抢滚动造成抖动；问答出现时滚到底露出确认按钮
+    const smooth = !window.matchMedia('(max-width: 900px)').matches
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }, [bubbles, busy, askKey])
   // 选中结果只从这里写回，不能写进 setPlanAnswers 的更新函数。
   // 开发模式会把更新函数调两遍：第一遍刚写入 ref，第二遍会把它当成「再点一次」取消掉。
   useEffect(() => {
@@ -1044,6 +1066,11 @@ export default function App() {
     }
   }
 
+  // 没有行程页时只留对话，底栏的会话/预览要等进入预览后再出现
+  useEffect(() => {
+    if (!trip && mobileView !== 'chat') setMobileView('chat')
+  }, [trip, mobileView])
+
   async function submitPlanAnswers() {
     if (!planQuestions.length) return
     if (planAnswers.some((a) => !String(a || '').trim())) {
@@ -1436,11 +1463,14 @@ export default function App() {
   ), [shareUrl])
 
   async function onCopyLink() {
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      showToast('链接已复制，可以粘贴到微信')
-    } catch {
-      setShareError('没有复制成功，请选中链接手动复制')
+    if (!shareUrl) return
+    setShareError('')
+    const ok = await copyText(shareUrl, shareLinkRef.current)
+    if (ok) showToast('链接已复制，可以粘贴到微信')
+    else {
+      shareLinkRef.current?.focus()
+      shareLinkRef.current?.select()
+      setShareError('没有复制成功，请长按上方链接手动复制')
     }
   }
 
@@ -1547,277 +1577,314 @@ export default function App() {
           </div>
         )}
 
-        <div className="log" ref={logRef}>
-          {!trip && bubbles.length === 0 && (
-            <div className="empty">
-              <h2>这趟想怎么走？</h2>
-              <div className="persona-list" role="radiogroup" aria-label="出行方式">
-                {PERSONAS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={planningPersona === p.id}
-                    className={planningPersona === p.id ? 'is-picked' : ''}
-                    disabled={busy}
-                    onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
-                  >
-                    <b>{p.label}</b>
-                    <span>{p.hint.replace(' · ', '，')}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="empty-k">也可以直接这样说</p>
-              <div className="example-list">
-                {EXAMPLES.map((ex) => (
-                  <button key={ex} type="button" title={ex} disabled={busy} onClick={() => setInput(ex)}>{ex}</button>
-                ))}
-              </div>
-              {seedList.length > 0 && (
-                <div className="seed-entry">
-                  <label className="seed-entry-label">
-                    <span>看看示例行程</span>
-                    <select
-                      className="seed-pick"
-                      value=""
-                      disabled={busy}
-                      aria-label="载入示例行程"
-                      onChange={(e) => { if (e.target.value) void loadSeed(e.target.value) }}
-                    >
-                      <option value="">选一份示例</option>
-                      {seedList.map((s, i) => (
-                        <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
-          {bubbles.map((b, i) => {
-            const text = b.text || ''
-            const actionable = b.role === 'assistant' && !b.pending && OWN_KEY_HINT.test(text)
-            const isError = b.role === 'assistant' && !b.pending && (b.error || ERROR_BUBBLE.test(text) || OWN_KEY_HINT.test(text))
-            return (
-              <div key={i} className={`bubble ${b.role}${isError ? ' error' : ''}`}>
-                {b.pending && <div className="who">正在生成</div>}
-                <div className="txt">{actionable ? renderQuotaText(text) : (text || (b.pending ? '正在处理…' : ''))}</div>
-              </div>
-            )
-          })}
-        </div>
-
-        {prefOffer && (
-          <div className="plan-ask pref-pick">
-            <div className="plan-ask-k">上一趟的偏好，勾选要沿用的</div>
-            <div className="pref-list">
-              {prefOffer.prefs.map((p, i) => (
-                <label key={p} className={prefOffer.picked[i] ? 'on' : ''}>
-                  <input
-                    type="checkbox"
-                    checked={prefOffer.picked[i]}
-                    disabled={busy}
-                    onChange={() => setPrefOffer({ ...prefOffer, picked: prefOffer.picked.map((v, j) => (j === i ? !v : v)) })}
-                  />
-                  <span>{p}</span>
-                </label>
-              ))}
-            </div>
-            <div className="plan-ask-bar">
-              <button type="button" className="go" disabled={busy || !prefOffer.picked.some(Boolean)} onClick={() => void settlePrefs(true)}>沿用所选并生成</button>
-              <button type="button" className="ghost" disabled={busy} onClick={() => void settlePrefs(false)}>都不用，直接生成</button>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="err">
-            {OWN_KEY_HINT.test(error) ? (
-              <>
-                {error
-                  .replace(/；?\s*或点[上下方]*「改用自己的(?:模型)?密钥」[^。；]*/g, '')
-                  .replace(/；?\s*也可改用自己的模型密钥继续/g, '')
-                  .replace(/[。；]\s*$/, '')}
-                。也可「
-                <button type="button" className="link-btn err-link" onClick={switchToOwnKey}>改用自己的模型密钥</button>
-                」继续。
-              </>
-            ) : error}
-          </div>
-        )}
-        {report.errors.length > 0 && (
-          <div className="err">校验：{report.errors.slice(0, 3).join('；')}</div>
-        )}
-
-        {askItems.length > 0 && (
-          <div className="plan-ask">
-            <div className="plan-ask-k">{trip ? '选完点确认，会更新当前行程' : '选完点确认，会直接生成行程'}</div>
-            {askItems.map((item, i) => {
-              const choices = choicesForQuestion(item.source)
-              const picked = planAnswers[i] || ''
-              const writing = Boolean(askWriting[i]) || (picked && !choices.includes(picked))
-              return (
-                <div key={item.question} className={`plan-q${writing ? ' is-writing' : ''}`}>
-                  <p>{i + 1}. {item.question}</p>
-                  <div className="plan-q-ops">
-                    <span className="plan-q-ans">答案</span>
-                    {choices.map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        className={picked === opt ? 'on' : ''}
-                        onClick={() => setAnswer(i, opt, true)}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                  {choices.length > 0 && !writing && (
+        {/* 对话气泡 + 问答卡同一滚动区，避免手机上问答把「确认并生成」顶出屏外却滚不到 */}
+        <div className="pane-main" ref={logRef}>
+          <div className="log">
+            {!trip && bubbles.length === 0 && (
+              <div className="empty">
+                <h2>这趟想怎么走？</h2>
+                <div className="persona-list" role="radiogroup" aria-label="出行方式">
+                  {PERSONAS.map((p) => (
                     <button
+                      key={p.id}
                       type="button"
-                      className="plan-q-write"
-                      onClick={() => setAskWriting((prev) => ({ ...prev, [i]: true }))}
+                      role="radio"
+                      aria-checked={planningPersona === p.id}
+                      className={planningPersona === p.id ? 'is-picked' : ''}
+                      disabled={busy}
+                      onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
                     >
-                      自行填写
+                      <b>{p.label}</b>
+                      <span>{p.hint.replace(' · ', '，')}</span>
                     </button>
-                  )}
-                  {(writing || choices.length === 0) && (
-                    <input
-                      value={picked}
-                      placeholder={ASK_WRITE_HINT}
-                      onChange={(e) => setAnswer(i, e.target.value)}
-                    />
-                  )}
+                  ))}
+                </div>
+                <p className="empty-k">也可以直接这样说</p>
+                <div className="example-list">
+                  {EXAMPLES.map((ex) => (
+                    <button key={ex} type="button" title={ex} disabled={busy} onClick={() => setInput(ex)}>{ex}</button>
+                  ))}
+                </div>
+                {seedList.length > 0 && (
+                  <div className="seed-entry">
+                    <label className="seed-entry-label">
+                      <span>看看示例行程</span>
+                      <select
+                        className="seed-pick"
+                        value=""
+                        disabled={busy}
+                        aria-label="载入示例行程"
+                        onChange={(e) => { if (e.target.value) void loadSeed(e.target.value) }}
+                      >
+                        <option value="">选一份示例</option>
+                        {seedList.map((s, i) => (
+                          <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+            {bubbles.map((b, i) => {
+              const text = b.text || ''
+              const actionable = b.role === 'assistant' && !b.pending && OWN_KEY_HINT.test(text)
+              const isError = b.role === 'assistant' && !b.pending && (b.error || ERROR_BUBBLE.test(text) || OWN_KEY_HINT.test(text))
+              return (
+                <div key={i} className={`bubble ${b.role}${isError ? ' error' : ''}`}>
+                  {b.pending && <div className="who">正在生成</div>}
+                  <div className="txt">{actionable ? renderQuotaText(text) : (text || (b.pending ? '正在处理…' : ''))}</div>
                 </div>
               )
             })}
-            <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。点错选项可再点一次取消。{busy ? '这一页还在生成，可以先选，出来后再点确认。' : ''}</p>
-            <div className="plan-ask-bar">
+          </div>
+
+          {prefOffer && (
+            <div className="plan-ask pref-pick">
+              <div className="plan-ask-k">上一趟的偏好，勾选要沿用的</div>
+              <div className="pref-list">
+                {prefOffer.prefs.map((p, i) => (
+                  <label key={p} className={prefOffer.picked[i] ? 'on' : ''}>
+                    <input
+                      type="checkbox"
+                      checked={prefOffer.picked[i]}
+                      disabled={busy}
+                      onChange={() => setPrefOffer({ ...prefOffer, picked: prefOffer.picked.map((v, j) => (j === i ? !v : v)) })}
+                    />
+                    <span>{p}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="plan-ask-bar">
+                <button type="button" className="go" disabled={busy || !prefOffer.picked.some(Boolean)} onClick={() => void settlePrefs(true)}>沿用所选并生成</button>
+                <button type="button" className="ghost" disabled={busy} onClick={() => void settlePrefs(false)}>都不用，直接生成</button>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="err">
+              {OWN_KEY_HINT.test(error) ? (
+                <>
+                  {error
+                    .replace(/；?\s*或点[上下方]*「改用自己的(?:模型)?密钥」[^。；]*/g, '')
+                    .replace(/；?\s*也可改用自己的模型密钥继续/g, '')
+                    .replace(/[。；]\s*$/, '')}
+                  。也可「
+                  <button type="button" className="link-btn err-link" onClick={switchToOwnKey}>改用自己的模型密钥</button>
+                  」继续。
+                </>
+              ) : error}
+            </div>
+          )}
+          {report.errors.length > 0 && (
+            <div className="err">校验：{report.errors.slice(0, 3).join('；')}</div>
+          )}
+
+          {askItems.length > 0 && (
+            <div className="plan-ask">
+              <div className="plan-ask-k">{trip ? '选完点确认，会更新当前行程' : '选完点确认，会直接生成行程'}</div>
+              {askItems.map((item, i) => {
+                const choices = choicesForQuestion(item.source)
+                const picked = planAnswers[i] || ''
+                const writing = Boolean(askWriting[i]) || (picked && !choices.includes(picked))
+                return (
+                  <div key={item.question} className={`plan-q${writing ? ' is-writing' : ''}`}>
+                    <p>{i + 1}. {item.question}</p>
+                    <div className="plan-q-ops">
+                      <span className="plan-q-ans">答案</span>
+                      {choices.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          className={picked === opt ? 'on' : ''}
+                          onClick={() => setAnswer(i, opt, true)}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                    {choices.length > 0 && !writing && (
+                      <button
+                        type="button"
+                        className="plan-q-write"
+                        onClick={() => setAskWriting((prev) => ({ ...prev, [i]: true }))}
+                      >
+                        自行填写
+                      </button>
+                    )}
+                    {(writing || choices.length === 0) && (
+                      <input
+                        value={picked}
+                        placeholder={ASK_WRITE_HINT}
+                        onChange={(e) => setAnswer(i, e.target.value)}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+              <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。点错选项可再点一次取消。{busy ? '这一页还在生成，可以先选，出来后再点确认。' : ''}</p>
+              <div className="plan-ask-bar">
+                <button
+                  type="button"
+                  className="go"
+                  disabled={planAnswers.some((a) => !String(a || '').trim())}
+                  onClick={() => void submitPlanAnswers()}
+                >
+                  {trip ? '确认并更新' : '确认并生成'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!trip && bubbles.length > 0 && (
+            <div className="persona-row" role="radiogroup" aria-label="出行方式">
+              {PERSONAS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={planningPersona === p.id}
+                  title={p.hint}
+                  className={planningPersona === p.id ? 'is-picked' : ''}
+                  onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 底栏停靠：主操作始终可见；矮屏也不裁切「生成/确认」 */}
+        <div className={`pane-dock${askItems.length > 0 || prefOffer ? ' has-cta' : ''}`}>
+          {prefOffer && (
+            <div className="pane-dock-cta" role="region" aria-label="沿用偏好">
+              <button type="button" className="go" disabled={busy || !prefOffer.picked.some(Boolean)} onClick={() => void settlePrefs(true)}>沿用所选并生成</button>
+              <button type="button" className="ghost" disabled={busy} onClick={() => void settlePrefs(false)}>都不用</button>
+            </div>
+          )}
+          {!prefOffer && askItems.length > 0 && (
+            <div className="pane-dock-cta" role="region" aria-label="确认问答">
+              <span className="pane-dock-meta">
+                已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}
+              </span>
               <button
                 type="button"
                 className="go"
-                disabled={planAnswers.some((a) => !String(a || '').trim())}
+                disabled={planAnswers.some((a) => !String(a || '').trim()) || busy}
                 onClick={() => void submitPlanAnswers()}
               >
                 {trip ? '确认并更新' : '确认并生成'}
               </button>
             </div>
-          </div>
-        )}
-
-        {!trip && bubbles.length > 0 && (
-          <div className="persona-row" role="radiogroup" aria-label="出行方式">
-            {PERSONAS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={planningPersona === p.id}
-                title={p.hint}
-                className={planningPersona === p.id ? 'is-picked' : ''}
-                onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <form
-          className={`composer${dragOver ? ' drop' : ''}`}
-          onSubmit={(e) => {
-            e.preventDefault()
-            void run(input)
-          }}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragOver(false)
-            void takeFiles(Array.from(e.dataTransfer?.files || []))
-          }}
-        >
-          {attachments.length > 0 && (
-            <div className="chips">
-              {attachments.map((a, i) => (
-                <span className="chip" key={`${a.name}-${i}`}>
-                  {a.kind === 'image' ? <img src={a.url} alt="" /> : <b>{((a.name.split('.').pop() || 'TXT').split(/[^\w]/)[0] || 'TXT').slice(0, 4).toUpperCase()}</b>}
-                  <span className="chip-name">{a.name}</span>
-                  <span className="chip-size">{prettyBytes(a.bytes)}</span>
-                  <button
-                    type="button"
-                    aria-label={`移除 ${a.name}`}
-                    onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
+          )}
+          {!prefOffer && askItems.length === 0 && canConfirm && !busy && (
+            <div className="pane-dock-cta" role="region" aria-label="确认生成">
+              <button type="button" className="go" onClick={() => void confirmPage()}>确认生成</button>
             </div>
           )}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={trip || planDraft ? '想改哪里，直接说' : '说出去哪、几个人、玩几天'}
-            rows={3}
-            onPaste={(e) => {
-              const files = filesFromPaste(e)
-              if (!files.length) return
+
+          <form
+            className={`composer${dragOver ? ' drop' : ''}${askItems.length > 0 || prefOffer ? ' is-secondary' : ''}`}
+            onSubmit={(e) => {
               e.preventDefault()
-              void takeFiles(files)
+              void run(input)
             }}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter' || e.shiftKey) return
-              // 中文输入法选词时的回车只是上屏；Safari 在 compositionend 之后还会补一个 keyCode 229
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
               e.preventDefault()
-              if (!busy) void run(input)
+              setDragOver(false)
+              void takeFiles(Array.from(e.dataTransfer?.files || []))
             }}
-          />
-          <div className="composer-bar">
-            {/* 生成中只保留一颗按钮，避免「确认生成」与「发送」同时变成「生成中」 */}
-            {canConfirm && askItems.length === 0 && !busy && (
-              <button type="button" className="go" onClick={() => void confirmPage()}>
-                确认生成
-              </button>
+          >
+            {attachments.length > 0 && (
+              <div className="chips">
+                {attachments.map((a, i) => (
+                  <span className="chip" key={`${a.name}-${i}`}>
+                    {a.kind === 'image' ? <img src={a.url} alt="" /> : <b>{((a.name.split('.').pop() || 'TXT').split(/[^\w]/)[0] || 'TXT').slice(0, 4).toUpperCase()}</b>}
+                    <span className="chip-name">{a.name}</span>
+                    <span className="chip-size">{prettyBytes(a.bytes)}</span>
+                    <button
+                      type="button"
+                      aria-label={`移除 ${a.name}`}
+                      onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
-            <button type="submit" className="go" disabled={busy}>
-              {busy ? '生成中' : trip || planDraft ? '发送' : '生成行程'}
-            </button>
-          </div>
-        </form>
+            <div className="composer-row">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={trip || planDraft ? '想改哪里，直接说' : '说出去哪、几个人、玩几天'}
+                rows={3}
+                onPaste={(e) => {
+                  const files = filesFromPaste(e)
+                  if (!files.length) return
+                  e.preventDefault()
+                  void takeFiles(files)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  // 中文输入法选词时的回车只是上屏；Safari 在 compositionend 之后还会补一个 keyCode 229
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                  e.preventDefault()
+                  if (!busy) void run(input)
+                }}
+              />
+              <div className="composer-bar">
+                {/* 桌面仍可在输入区旁点确认；手机主按钮在 dock-cta */}
+                {canConfirm && askItems.length === 0 && !busy && (
+                  <button type="button" className="go composer-confirm-desk" onClick={() => void confirmPage()}>
+                    确认生成
+                  </button>
+                )}
+                <button type="submit" className="go" disabled={busy}>
+                  {busy ? '生成中' : trip || planDraft ? '发送' : '生成行程'}
+                </button>
+              </div>
+            </div>
+          </form>
 
-        {serverModel && (
-          <footer className="pane-foot">
-            <p className="model-line">
-              本agent已接入DeepSeek模型，{authUser
-                ? (quotaUnlimited ? '不限次数' : `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次`)
-                : `每人每天 ${serverCfg.dailyLimit} 次`}
-              <button type="button" className="link-btn" onClick={switchToOwnKey}>改用自己的模型密钥</button>
-            </p>
-          </footer>
-        )}
+          {serverModel && (
+            <footer className="pane-foot">
+              <p className="model-line">
+                本agent已接入DeepSeek模型，{authUser
+                  ? (quotaUnlimited ? '不限次数' : `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次`)
+                  : `每人每天 ${serverCfg.dailyLimit} 次`}
+                <button type="button" className="link-btn" onClick={switchToOwnKey}>改用自己的模型密钥</button>
+              </p>
+            </footer>
+          )}
 
-        <nav className="mobile-tabs" aria-label="手机视图切换">
-          <button
-            type="button"
-            className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
-            aria-pressed={mobileView === 'chat'}
-            aria-controls="tm-chat-pane"
-            onClick={() => switchMobileView('chat')}
-          >
-            对话
-          </button>
-          <button
-            type="button"
-            className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
-            aria-pressed={mobileView === 'preview'}
-            aria-controls="tm-preview-pane"
-            onClick={() => switchMobileView('preview')}
-          >
-            预览
-          </button>
-        </nav>
+          {trip && (
+            <nav className="mobile-tabs" aria-label="手机视图切换">
+              <button
+                type="button"
+                className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
+                aria-pressed={mobileView === 'chat'}
+                aria-controls="tm-chat-pane"
+                onClick={() => switchMobileView('chat')}
+              >
+                会话
+              </button>
+              <button
+                type="button"
+                className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
+                aria-pressed={mobileView === 'preview'}
+                aria-controls="tm-preview-pane"
+                onClick={() => switchMobileView('preview')}
+              >
+                预览
+              </button>
+            </nav>
+          )}
+        </div>
       </aside>
 
       <main className="stage" id="tm-preview-pane">
@@ -1853,7 +1920,7 @@ export default function App() {
             {import.meta.env.DEV && <button type="button" onClick={() => void saveAsSeed()}>存为示例</button>}
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
             <button type="button" onClick={() => void onImage()}>导出图片</button>
-            <button type="button" className="primary" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
+            <button type="button" className="primary export-h5" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
           </div>}
         </div>
         <div className={`frame ${device}`}>
@@ -1868,26 +1935,28 @@ export default function App() {
           )}
         </div>
 
-        <nav className="mobile-tabs" aria-label="手机视图切换">
-          <button
-            type="button"
-            className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
-            aria-pressed={mobileView === 'chat'}
-            aria-controls="tm-chat-pane"
-            onClick={() => switchMobileView('chat')}
-          >
-            对话
-          </button>
-          <button
-            type="button"
-            className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
-            aria-pressed={mobileView === 'preview'}
-            aria-controls="tm-preview-pane"
-            onClick={() => switchMobileView('preview')}
-          >
-            预览
-          </button>
-        </nav>
+        {trip && (
+          <nav className="mobile-tabs" aria-label="手机视图切换">
+            <button
+              type="button"
+              className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
+              aria-pressed={mobileView === 'chat'}
+              aria-controls="tm-chat-pane"
+              onClick={() => switchMobileView('chat')}
+            >
+              会话
+            </button>
+            <button
+              type="button"
+              className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
+              aria-pressed={mobileView === 'preview'}
+              aria-controls="tm-preview-pane"
+              onClick={() => switchMobileView('preview')}
+            >
+              预览
+            </button>
+          </nav>
+        )}
       </main>
       </>
       )}
@@ -2069,6 +2138,7 @@ export default function App() {
                   dangerouslySetInnerHTML={{ __html: shareQr }}
                 />
                 <input
+                  ref={shareLinkRef}
                   className="share-link"
                   readOnly
                   value={shareUrl}

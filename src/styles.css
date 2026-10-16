@@ -540,10 +540,22 @@ button,
 .today-card .plan-ask-k { margin: 0; }
 .today-card p { margin: 6px 0 10px; font-size: 14px; line-height: 1.6; }
 
-.log {
+/* 气泡 + 问答卡共用滚动；输入框/底栏钉在下方 */
+.pane-main {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+}
+.log {
+  flex: 1 0 auto;
+  min-height: 0;
+  overflow: visible;
   padding: 20px 24px 16px;
 }
 
@@ -729,6 +741,16 @@ button,
 }
 .persona-row button.is-picked { border-color: var(--route); color: var(--paper); }
 
+.pane-dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #0b1226;
+}
+.pane-dock-cta {
+  display: none;
+}
 .composer {
   margin: 0 16px;
   padding: 12px 12px 10px;
@@ -739,6 +761,7 @@ button,
 }
 .composer:focus-within { border-color: rgba(226, 233, 245, 0.4); }
 .composer.drop { border-color: var(--route); border-style: dashed; }
+.composer-row { display: block; }
 .composer textarea {
   display: block;
   width: 100%;
@@ -755,6 +778,7 @@ button,
 .composer textarea:focus { outline: none; }
 .composer textarea::placeholder { color: var(--faint); }
 .composer-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.composer-confirm-desk { display: inline-flex; }
 .seed-entry { margin-top: 18px; }
 .seed-entry-label {
   display: grid;
@@ -1222,14 +1246,17 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     position: fixed;
     inset: 0;
     width: 100%;
+    /* --app-vh：键盘弹出时由 visualViewport 写入，优先于 svh */
     height: 100vh;
     height: 100svh;
+    height: var(--app-vh, 100svh);
+    max-height: 100vh;
     max-height: 100svh;
+    max-height: var(--app-vh, 100svh);
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
     overscroll-behavior: none;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .shell.mobile-chat .stage,
   .shell.mobile-preview .pane {
@@ -1242,8 +1269,8 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     width: 100%;
     min-width: 0;
     min-height: 0;
-    height: auto;
-    max-height: none;
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1251,8 +1278,8 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
   }
 
   /*
-   * 底栏挂在 pane/stage 内部，与 .composer 共用左右 16px，宽度必然一致。
-   * 「预览」始终路线橙（醒目主操作）；「对话」选中为浅底深字。
+   * 布局：顶栏(品牌/会话) + 可滚内容 + 底栏停靠(主 CTA / 紧凑输入 / 页签)
+   * 主操作永远在停靠区，矮屏也能点到「确认/生成」。
    */
   .pane .mobile-tabs,
   .stage .mobile-tabs {
@@ -1261,10 +1288,10 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     align-items: stretch;
     gap: 8px;
     box-sizing: border-box;
-    width: calc(100% - 32px);
-    max-width: calc(100% - 32px);
-    margin: 0 16px 12px;
-    padding: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -1277,9 +1304,9 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     justify-content: center;
     box-sizing: border-box;
     width: auto;
-    height: 48px;
-    min-height: 48px;
-    max-height: 48px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
     margin: 0;
     padding: 0 12px;
     border: 0;
@@ -1330,21 +1357,63 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     color: #fff;
   }
 
-  .brand { padding: 14px 16px 0; }
+  .brand { padding: 10px 16px 0; flex: none; }
   .session-bar {
-    margin: 10px 16px 0;
-    padding-bottom: 10px;
+    flex: none;
+    margin: 8px 16px 0;
+    padding-bottom: 8px;
     gap: 4px;
   }
   .session-bar .icon-btn {
     width: 40px;
     height: 40px;
   }
-  .log {
-    overflow: auto;
+  .today-card {
+    flex: none;
+    margin: 8px 16px 0;
+    padding: 10px 12px;
+  }
+  .pane-main {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 12px 16px 10px;
+    touch-action: pan-y;
+  }
+  .log {
+    overflow: visible;
+    padding: 10px 16px 8px;
+  }
+  .pane-dock {
+    flex: none;
+    border-top: 1px solid rgba(226, 233, 245, 0.08);
+    background: linear-gradient(180deg, rgba(11, 18, 38, 0.92) 0%, #0b1226 28%);
+    box-shadow: 0 -8px 24px rgba(5, 11, 31, 0.35);
+  }
+  .pane-dock-cta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 16px;
+    padding: 10px 0 0;
+  }
+  .pane-dock-meta {
+    flex: none;
+    font-size: 12px;
+    color: var(--mist);
+    white-space: nowrap;
+  }
+  .pane-dock-cta .go,
+  .pane-dock-cta .ghost {
+    flex: 1;
+    min-height: 44px;
+  }
+  .pane-dock-cta .go { flex: 1.4; }
+  /* 卡内确认钮改由底栏承接，避免重复占高 */
+  .plan-ask .plan-ask-bar,
+  .pref-pick .plan-ask-bar {
+    display: none;
   }
   .empty { padding-top: 8px; }
   .empty h2 { font-size: 22px; }
@@ -1353,26 +1422,90 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     padding: 14px 12px;
   }
   .plan-ask-bar .go,
-  .composer-bar .go {
+  .composer-bar .go,
+  .pane-dock-cta .go {
     min-height: 44px;
-    flex: 1;
   }
+  /* 单行输入 + 右侧发送，矮屏也能看到完整操作 */
   .composer {
-    margin: 0 16px 8px;
-    padding: 10px 10px 8px;
+    margin: 8px 16px 0;
+    padding: 8px 8px 8px 12px;
+  }
+  .composer-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
   }
   .composer textarea {
-    min-height: 52px;
+    flex: 1;
+    min-width: 0;
+    min-height: 40px;
+    max-height: 120px;
+    padding: 8px 0;
     font-size: 16px; /* 避免 iOS 聚焦时整页放大 */
+    line-height: 1.4;
+    field-sizing: content;
+  }
+  .composer:focus-within textarea {
+    min-height: 72px;
+  }
+  .composer-bar {
+    flex: none;
+    margin: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .composer-bar .go {
+    min-height: 40px;
+    min-width: 4.8em;
+    padding: 0 12px;
+    flex: none;
+  }
+  .composer-confirm-desk { display: none; }
+  /* 问答进行时输入降为次要，给主 CTA 让出空间 */
+  .composer.is-secondary {
+    margin-top: 6px;
+    padding: 6px 8px 6px 12px;
+    opacity: 0.92;
+  }
+  .composer.is-secondary textarea {
+    min-height: 36px;
+    max-height: 72px;
+  }
+  .composer.is-secondary:focus-within {
+    opacity: 1;
   }
   .pane-foot {
-    margin: 0 16px;
-    padding: 6px 0 10px;
+    display: none; /* 手机省高度；密钥入口在账号里 */
+  }
+
+  /* 极矮屏（如 SE / 横屏）：再压顶栏 */
+  @media (max-height: 640px) {
+    .brand { padding-top: 6px; }
+    .brand-logo-word { font-size: 15px; }
+    .session-bar { margin-top: 4px; padding-bottom: 4px; }
+    .today-card { display: none; }
+    .mobile-tabs > button.tab-chat,
+    .mobile-tabs > button.tab-preview {
+      height: 40px;
+      min-height: 40px;
+      max-height: 40px;
+    }
+    .pane-dock-cta { padding-top: 6px; }
+    .composer { margin-top: 6px; }
   }
   .toolbar {
     flex-wrap: wrap;
     gap: 8px;
     padding: 10px 12px;
+  }
+  /* 窄屏预览已经是手机宽度，不再提供手机/桌面切换，也不提供导出 H5 */
+  .toolbar .seg,
+  .actions .export-h5 {
+    display: none;
+  }
+  .toolbar:not(:has(.actions)):not(:has(.page-enrich)) {
+    display: none;
   }
   .actions {
     width: 100%;
