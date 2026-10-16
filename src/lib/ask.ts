@@ -7,8 +7,14 @@ export type AskItem = {
   source: string
 }
 
+function stripAnswerLine(text: string): string {
+  return String(text || '').replace(/\n?\s*答案[：:].*$/s, '').trim()
+}
+
 function cleanChoice(raw: string): string {
-  let t = String(raw || '').trim()
+  let t = stripAnswerLine(String(raw || ''))
+  // 「还是」右侧若误带「答案：A.按你建议 B.先跳过」，不要把整段答案当选项
+  if (/^[A-H][\.、\)）]/.test(t) || /\s[A-H][\.、\)）]/.test(t)) return ''
   if (/[：:]/.test(t) && !/第\s*\d+\s*格/.test(t)) t = (t.split(/[：:]/).pop() || t).trim()
   t = t.replace(/[？?。！!]+[\s\S]*$/, '').replace(/[（(][^）)]{0,24}[）)]\s*$/, '')
   t = t.replace(/^[\s、，,。；;]+/, '').replace(/[，,。；;：:\s]+$/, '')
@@ -17,7 +23,7 @@ function cleanChoice(raw: string): string {
 }
 
 function displayQuestion(text: string): string {
-  return String(text || '').replace(/\s*答案[：:].*$/s, '').trim()
+  return stripAnswerLine(text)
 }
 
 function labelChoices(opts: string[]): string[] {
@@ -61,7 +67,8 @@ function expandShortList(parts: string[]): string[] {
 }
 
 function orChoices(question: string): string[] {
-  const q = String(question || '')
+  // 只从问句拆「还是/或者」，忽略模型写歪的「答案：」行
+  const q = stripAnswerLine(question)
   const afterColon = q.split(/[：:]/).slice(1).join('：').trim()
   const src = /还是|或者/.test(afterColon) ? afterColon : q
   if (!/还是|或者/.test(src)) return []
@@ -75,11 +82,12 @@ function isPersonaQuestion(question: string): boolean {
 export function choicesForQuestion(question: string): string[] {
   const q = String(question || '').trim()
   const fromLetters = letteredChoices(q)
+  // 答案行若只剩「按你建议/先跳过」，不算有效选项，继续从问句「还是」拆
   if (fromLetters.length >= 1) return labelChoices(fromLetters)
   const fromOr = orChoices(q)
   if (fromOr.length >= 2) return labelChoices(fromOr)
   if (isPersonaQuestion(q)) return labelChoices(['旅居', '带队', '探秘'])
-  if (/是否|要不要|是不是/.test(q)) return labelChoices(['是', '否'])
+  if (/是否|要不要|是不是/.test(stripAnswerLine(q))) return labelChoices(['是', '否'])
   return labelChoices([])
 }
 

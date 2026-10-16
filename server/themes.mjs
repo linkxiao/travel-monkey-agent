@@ -1,52 +1,44 @@
 export const THEMES = [
   {
     id: 'terracotta',
-    name: '陶土宣纸',
+    name: '岩土',
     fallback: true,
-    vars: { bg: '#f4efe6', card: '#fffaf2', ink: '#1c1914', mid: '#3d3428', sakura: '#b4532a', teal: '#c4a15a', radius: '14px' },
-    layout: 'default',
+    vars: { bg: '#f4f3f0', card: '#ffffff', ink: '#1d1b18', mid: '#57524b', sakura: '#a24c27', teal: '#8c7a5b', radius: '12px' },
   },
   {
     id: 'matcha',
-    name: '抹茶山房',
-    vars: { bg: '#eef3ea', card: '#f7faf5', ink: '#1c3228', mid: '#2a4a38', sakura: '#3d5c45', teal: '#8a9a62', radius: '18px' },
-    layout: 'editorial',
+    name: '山房',
+    vars: { bg: '#f1f4f0', card: '#ffffff', ink: '#16261d', mid: '#4a5a50', sakura: '#3b6a4c', teal: '#7f8f5a', radius: '12px' },
   },
   {
     id: 'ink',
-    name: '墨金夜宴',
-    vars: { bg: '#14110e', card: '#1c1914', ink: '#f4efe6', mid: '#c4b8a4', sakura: '#d4b36a', teal: '#8a7a68', radius: '10px' },
-    layout: 'poster',
+    name: '墨夜',
+    vars: { bg: '#131311', card: '#1c1b19', ink: '#f2efe8', mid: '#b7b0a2', sakura: '#d2b06a', teal: '#8f8574', radius: '12px' },
   },
   {
     id: 'coast',
-    name: '海风蓝瓷',
-    vars: { bg: '#eef4f7', card: '#ffffff', ink: '#16324f', mid: '#3d5a73', sakura: '#2a6f97', teal: '#5fa8d3', radius: '16px' },
-    layout: 'editorial',
+    name: '海岸',
+    vars: { bg: '#f1f4f6', card: '#ffffff', ink: '#13283d', mid: '#4a5d70', sakura: '#1f6790', teal: '#4f93bb', radius: '12px' },
   },
   {
     id: 'rose',
-    name: '绯樱手帐',
-    vars: { bg: '#f8eee9', card: '#fff8f5', ink: '#3d1f24', mid: '#6b3a40', sakura: '#c45c5c', teal: '#d4a15a', radius: '20px' },
-    layout: 'poster',
+    name: '花信',
+    vars: { bg: '#f7f3f2', card: '#ffffff', ink: '#33191d', mid: '#6e4c50', sakura: '#a8424a', teal: '#b9874d', radius: '12px' },
   },
   {
     id: 'slate',
-    name: '青灰石庭',
-    vars: { bg: '#eceae6', card: '#f7f6f3', ink: '#242422', mid: '#5c5a54', sakura: '#6b6b5c', teal: '#8a8680', radius: '8px' },
-    layout: 'dense',
+    name: '石庭',
+    vars: { bg: '#f2f2f0', card: '#ffffff', ink: '#222220', mid: '#5a5852', sakura: '#485754', teal: '#7f7b74', radius: '12px' },
   },
   {
     id: 'sand',
-    name: '沙金驿馆',
-    vars: { bg: '#f3ead6', card: '#fff8e8', ink: '#3d2e16', mid: '#6b5428', sakura: '#c48a2a', teal: '#d4b36a', radius: '12px' },
-    layout: 'default',
+    name: '沙丘',
+    vars: { bg: '#f5f1e9', card: '#ffffff', ink: '#2e2414', mid: '#665741', sakura: '#996a1c', teal: '#b9974f', radius: '12px' },
   },
   {
     id: 'night',
-    name: '绀青旅馆',
-    vars: { bg: '#12161c', card: '#1b222c', ink: '#e8eef4', mid: '#9aa8b5', sakura: '#5b8def', teal: '#7d9a78', radius: '14px' },
-    layout: 'poster',
+    name: '夜航',
+    vars: { bg: '#10141a', card: '#181e26', ink: '#e8eef4', mid: '#9aa8b5', sakura: '#78a2ef', teal: '#7d9a78', radius: '12px' },
   },
 ]
 
@@ -132,7 +124,7 @@ export function themePalette(theme) {
   const card = v.card
   const raise = mix(card, v.ink, 0.07)
   const onCards = (color, min) => readable(readable(color, card, min), raise, min)
-  const deep = readable(mix(v.sakura, '#000000', 0.55), '#ffffff', 7)
+  const deep = readable(mix(v.sakura, '#15171a', 0.74), '#ffffff', 7)
   const sakura = onCards(v.sakura, 4.5)
   return {
     bg: v.bg,
@@ -156,55 +148,32 @@ export function themeCss(theme) {
   const t = theme && theme.vars ? theme : FALLBACK
   const v = t.vars
   const p = themePalette(t)
-  const layout = {
-    editorial: `.hero-title,h1{letter-spacing:.12em;font-weight:800}.slot-name{font-size:22px!important;letter-spacing:.06em}.slot-card{padding:6px 6px 14px}.section-header{letter-spacing:.16em}`,
-    poster: `.hero-title{font-size:clamp(36px,6vw,64px)!important;font-weight:900}.slot-img-wrap{min-height:240px!important}.overview-card,.slot-card{border-radius:20px}.hero{min-height:280px}.slot-kind{letter-spacing:.14em}`,
-    dense: `.slot-img-wrap{min-height:156px!important}.slot-review,.hero-sub{font-size:12px}.overview-card{padding:10px}.slot-card{border-radius:8px}.hero-title{font-size:clamp(28px,5vw,44px)!important}`,
-    default: `.hero-title{letter-spacing:.08em}.slot-card{border-radius:var(--radius)}`,
-  }[t.layout] || ''
+  const dark = luminance(p.bg) < 0.2
   return `
 :root{
-  --bg:${p.bg}!important;
-  --bg-card:${p.card}!important;
-  --bg-section:${p.bg}!important;
+  --bg:${p.bg};
+  --bg-card:${p.card};
   --bg-raise:${p.raise};
-  --ink:${p.ink}!important;
-  --ink-mid:${p.mid}!important;
-  --ink-soft:${p.mid}!important;
-  --sakura:${p.sakura}!important;
-  --sakura-lt:${p.sakura}!important;
-  --teal:${p.teal}!important;
-  --teal-lt:${p.teal}!important;
+  --ink:${p.ink};
+  --ink-mid:${p.mid};
+  --ink-soft:${p.mid};
+  --sakura:${p.sakura};
+  --teal:${p.teal};
   --teal-ink:${p.tealInk};
-  --indigo:${p.deep}!important;
-  --indigo-lt:${p.deepLt}!important;
+  --indigo:${p.deep};
+  --indigo-lt:${p.deepLt};
   --deep-ink:${p.deepInk};
   --deep-accent:${p.deepAccent};
-  --radius:${v.radius}!important;
+  --radius:${v.radius};
+  --rule:${dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.1)'};
 }
-body{background:var(--bg)!important;color:var(--ink)!important}
 .hero-title,.day-weekday,.checklist-title{color:#fff!important}
-.hero-eyebrow{color:#f4e8c8!important}
-.hero-sub,.hero-badge{color:rgba(255,248,230,.94)!important}
 .day-when-week,.day-brief{color:rgba(255,255,255,.9)!important}
-.day-when-date{color:rgba(255,255,255,.74)!important}
-.todo-text{color:rgba(255,255,255,.92)!important}
-.todo-deadline,.hero-title span{color:var(--deep-accent)!important}
-.slot-name,.overview-day,.craft-title,.hike-route-title,.hike-stop-name,.dish-name,.overview-route,.overview-cell{color:var(--ink)!important}
-.craft-body,.hike-route-note,.hike-stop-row,.hike-route-meta,.overview-meta,.gallery-item figcaption,.slot-rating-num,.disclaimer-box,.ov-route,.ov-stay{color:var(--ink-mid)!important}
-.craft-kicker,.overview-date,.hike-route-kicker,.hike-leg,.hike-stop-kind,.hike-stop-row b,.hike-stop-hot,.slot-cut,.gallery-kind,.ov-spot,.pill.sakura,.info-label{color:var(--sakura)!important}
-.slot-time,.hotel-price,.dining-header,.day-alts-head,.seasonal-tag,.flight-tag,.pill.teal,.tier-economy,.ov-food{color:var(--teal-ink)!important}
-.section-title,.pill,.flight-label,.hotel-area-name,.tier-mid{color:var(--deep-ink)!important}
-.dining-section,.craft-card,.hike-route,.overview-card,.dining-item{background:var(--bg-raise)!important}
-.hike-stop,.hike-stop.on{background:var(--bg-card)!important}
-.route-pin__num{color:${p.onSakura}!important}
-.dining-meal-badge{color:${p.onTeal}!important}
-.hero{position:relative;overflow:hidden}
-.slot-card,.section{background:var(--bg-card)!important;border-radius:var(--radius)}
-.overview-card{border-radius:var(--radius)}
-.action-link{display:inline-block;margin-top:8px;padding:4px 10px;border:1px solid var(--sakura);border-radius:999px;font-size:11px;letter-spacing:.08em;color:var(--sakura)!important;text-decoration:none}
-.data-sources{margin-top:8px;font-size:11px;line-height:1.6;color:var(--ink-mid);opacity:.85}
-${layout}
+.day-when-date{color:rgba(255,255,255,.7)!important}
+.todo-text{color:rgba(255,255,255,.9)!important}
+.todo-deadline{color:var(--deep-accent)!important}
+.slot-name,.overview-day,.craft-title,.dish-name,.overview-cell{color:var(--ink)!important}
+.craft-body,.overview-meta,.disclaimer-box{color:var(--ink-mid)!important}
 `
 }
 

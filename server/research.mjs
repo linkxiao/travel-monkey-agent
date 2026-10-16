@@ -190,7 +190,9 @@ export function routeLibraryLine(query, dest) {
   } catch { return '' }
 }
 
-export async function researchQuery({ query, amapKey, searchKey, searchProvider }) {
+export async function researchQuery({
+  query, amapKey, searchKey, searchProvider, searchFallbackKey, searchFallbackProvider,
+}) {
   const dest = guessDest(query)
   const sources = []
   const places = []
@@ -266,12 +268,13 @@ export async function researchQuery({ query, amapKey, searchKey, searchProvider 
     }
   }
 
-  if (searchKey && dest) {
+  if ((searchKey || searchFallbackKey) && dest) {
     try {
+      const searchOpts = { searchKey, searchProvider, searchFallbackKey, searchFallbackProvider }
       const [flightHits, hotelHits, localHits] = await Promise.all([
-        searchWeb(`${dest} 机票 航班 飞猪 时刻`, { searchKey, searchProvider }),
-        searchWeb(`${dest} 酒店 飞猪 片区 推荐`, { searchKey, searchProvider }),
-        searchWeb(`${dest} 当季 活动 必吃`, { searchKey, searchProvider }),
+        searchWeb(`${dest} 机票 航班 飞猪 时刻`, searchOpts),
+        searchWeb(`${dest} 酒店 飞猪 片区 推荐`, searchOpts),
+        searchWeb(`${dest} 当季 活动 必吃`, searchOpts),
       ])
       const keepHit = (h) => {
         const blob = `${h.title || ''} ${h.snippet || ''}`

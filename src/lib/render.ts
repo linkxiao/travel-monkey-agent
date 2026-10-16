@@ -16,6 +16,8 @@ export async function renderTripPage(trip: Trip, opts?: {
   tiandituKey?: string
   searchKey?: string
   searchProvider?: string
+  searchFallbackKey?: string
+  searchFallbackProvider?: string
 }) {
   let res: Response
   try {
@@ -39,6 +41,8 @@ export async function renderTripPage(trip: Trip, opts?: {
         tiandituKey: opts?.tiandituKey,
         searchKey: opts?.searchKey,
         searchProvider: opts?.searchProvider,
+        searchFallbackKey: opts?.searchFallbackKey,
+        searchFallbackProvider: opts?.searchFallbackProvider,
       }),
     })
   } catch (err) {

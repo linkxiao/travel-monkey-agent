@@ -9,6 +9,7 @@ import { renderTripPage } from './lib/render'
 import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { AccountDialog, type AuthInput, type AuthScreen, type AuthSuccess } from './AccountDialog'
 import { AlpineScene } from './AlpineScene'
+import { FieldSelect } from './FieldSelect'
 import { TOKEN_KEY, fetchSession, loginAccount, logoutAccount, registerAccount, requestAuthCode } from './lib/auth'
 import { todayAdvice } from './lib/today'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
@@ -37,9 +38,10 @@ function isConfirm(text: string) {
   return /^(确认出页|确认生成|就按这个出页|按这个出页)[。.!！]?$/.test(text.trim())
 }
 
-type Bubble = { role: 'user' | 'assistant'; text: string; pending?: boolean }
+type Bubble = { role: 'user' | 'assistant'; text: string; pending?: boolean; error?: boolean }
 
-const OWN_KEY_HINT = /改用自己的(?:模型)?密钥|次已经用完|请求太频繁/
+const OWN_KEY_HINT = /改用自己的(?:模型)?密钥|次已经用完|免费额度|请求太频繁/
+const ERROR_BUBBLE = /^(出错了：|密钥没通过)/
 
 const EXAMPLES = [
   '京都、奈良5天4晚、两人，偏寺庙、樱花、咖啡和人文古迹和，住町屋',
@@ -93,6 +95,8 @@ export default function App() {
   const [tiandituKey, setTiandituKey] = useState(() => loadSetting('ct.tianditu', ''))
   const [searchKey, setSearchKey] = useState(() => loadSetting('ct.search', ''))
   const [searchProvider, setSearchProvider] = useState(() => loadSetting('ct.searchPv', 'bocha'))
+  const [searchFallbackKey, setSearchFallbackKey] = useState(() => loadSetting('ct.searchFb', ''))
+  const [searchFallbackProvider, setSearchFallbackProvider] = useState(() => loadSetting('ct.searchFbPv', 'tavily'))
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [planDraft, setPlanDraft] = useState('')
@@ -122,8 +126,7 @@ export default function App() {
   const [ownKey, setOwnKey] = useState(() => loadSetting('ct.ownKey', '') === '1')
   const [quotaLeft, setQuotaLeft] = useState<number | null>(null)
   const serverModel = Boolean(serverCfg.model) && !ownKey
-  const ownKeyPanelRef = useRef<HTMLDetailsElement>(null)
-  const focusOwnKeyRef = useRef(false)
+  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
 
   useEffect(() => {
     void fetchServerConfig().then(setServerCfg)
@@ -133,20 +136,9 @@ export default function App() {
     try { localStorage.setItem('ct.ownKey', ownKey ? '1' : '') } catch { /* ignore */ }
   }, [ownKey])
 
-  function revealOwnKeyPanel() {
-    const el = ownKeyPanelRef.current
-    if (!el) return
-    el.open = true
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      el.querySelector<HTMLInputElement>('input[type="password"], input:not([type])')?.focus()
-    })
-  }
-
   function switchToOwnKey() {
-    focusOwnKeyRef.current = true
-    if (ownKey) revealOwnKeyPanel()
-    else setOwnKey(true)
+    setOwnKey(true)
+    setKeyDialogOpen(true)
   }
 
   // 额度提示保持原话，只把「改用自己的模型密钥」这句变成行内可点按钮
@@ -172,14 +164,21 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!ownKey) return
-    if (focusOwnKeyRef.current) {
-      focusOwnKeyRef.current = false
-      revealOwnKeyPanel()
-      return
+    const openFromUrl = () => {
+      if (new URLSearchParams(window.location.search).get('tag') === '1') setKeyDialogOpen(true)
     }
-    if (!apiKey.trim() && ownKeyPanelRef.current) ownKeyPanelRef.current.open = true
-  }, [ownKey])
+    openFromUrl()
+    window.addEventListener('popstate', openFromUrl)
+    return () => window.removeEventListener('popstate', openFromUrl)
+  }, [])
+
+  useEffect(() => {
+    if (!keyDialogOpen) return
+    const timer = window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>('.key-sheet input')?.focus()
+    }, 40)
+    return () => window.clearTimeout(timer)
+  }, [keyDialogOpen])
 
   function refreshQuota() {
     if (!serverCfg.model) return
@@ -226,7 +225,9 @@ export default function App() {
     localStorage.setItem('ct.tianditu', tiandituKey)
     localStorage.setItem('ct.search', searchKey)
     localStorage.setItem('ct.searchPv', searchProvider)
-  }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, tiandituKey, searchKey, searchProvider])
+    localStorage.setItem('ct.searchFb', searchFallbackKey)
+    localStorage.setItem('ct.searchFbPv', searchFallbackProvider)
+  }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, tiandituKey, searchKey, searchProvider, searchFallbackKey, searchFallbackProvider])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
@@ -445,6 +446,8 @@ export default function App() {
       tiandituKey: tiandituKey.trim() || undefined,
       searchKey: searchKey.trim() || undefined,
       searchProvider,
+      searchFallbackKey: searchFallbackKey.trim() || undefined,
+      searchFallbackProvider,
     })
     setTrip(out.trip)
     setHtml(out.html)
@@ -532,7 +535,7 @@ export default function App() {
 
   async function ensureResearch(query: string) {
     if (researchRef.current.done && researchRef.current.query === query) return researchRef.current
-    if (!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search) {
+    if (!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !searchFallbackKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search) {
       researchRef.current = {
         done: true,
         query,
@@ -549,6 +552,8 @@ export default function App() {
         tiandituKey: tiandituKey.trim(),
         searchKey: searchKey.trim(),
         searchProvider,
+        searchFallbackKey: searchFallbackKey.trim(),
+        searchFallbackProvider,
       })
       researchRef.current = {
         done: true,
@@ -600,13 +605,15 @@ export default function App() {
   function showFail(msg: string) {
     const auth = isAuthFail(msg) && !serverModel
     if (auth) rememberKeyFailed()
-    setError(msg)
+    // 只留对话里一处报错，不再同时打下方红条（颜色与 .err 一致）
+    setError('')
     const chat = auth ? '密钥没通过。请在下方重新粘贴完整模型密钥后再发。' : `出错了：${msg}`
     setBubbles((prev) => {
       const next = [...prev]
       const last = next[next.length - 1]
-      if (last?.pending) next[next.length - 1] = { role: 'assistant', text: chat }
-      else next.push({ role: 'assistant', text: chat })
+      const bubble: Bubble = { role: 'assistant', text: chat, error: true }
+      if (last?.pending) next[next.length - 1] = bubble
+      else next.push(bubble)
       return next
     })
   }
@@ -1340,19 +1347,20 @@ export default function App() {
         </header>
 
         <div className="session-bar">
-          <select
+          <FieldSelect
+            compact
+            aria-label="历史行程"
             value={sessionId}
             disabled={busy || !hydrated}
-            onChange={(e) => void switchTrip(e.target.value)}
-            title="历史行程：刷新页面也会接着上次"
-          >
-            {!sessionList.some((s) => s.id === sessionId) && <option value={sessionId}>新行程</option>}
-            {sessionList.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}（{new Date(s.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{s.stage === 'plan' ? '，大纲' : ''}）
-              </option>
-            ))}
-          </select>
+            onChange={(id) => void switchTrip(id)}
+            options={[
+              ...(!sessionList.some((s) => s.id === sessionId) ? [{ value: sessionId, label: '新行程' }] : []),
+              ...sessionList.map((s) => ({
+                value: s.id,
+                label: `${s.title}（${new Date(s.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}${s.stage === 'plan' ? '，大纲' : ''}）`,
+              })),
+            ]}
+          />
           <button type="button" className="icon-btn" aria-label="新建行程" title="新建行程" disabled={busy || !hydrated} onClick={() => void newTrip()}>
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>
@@ -1404,11 +1412,13 @@ export default function App() {
             </div>
           )}
           {bubbles.map((b, i) => {
-            const actionable = b.role === 'assistant' && !b.pending && OWN_KEY_HINT.test(b.text || '')
+            const text = b.text || ''
+            const actionable = b.role === 'assistant' && !b.pending && OWN_KEY_HINT.test(text)
+            const isError = b.role === 'assistant' && !b.pending && (b.error || ERROR_BUBBLE.test(text) || OWN_KEY_HINT.test(text))
             return (
-              <div key={i} className={`bubble ${b.role}`}>
+              <div key={i} className={`bubble ${b.role}${isError ? ' error' : ''}`}>
                 {b.pending && <div className="who">正在生成</div>}
-                <div className="txt">{actionable ? renderQuotaText(b.text || '') : (b.text || (b.pending ? '正在处理…' : ''))}</div>
+                <div className="txt">{actionable ? renderQuotaText(text) : (text || (b.pending ? '正在处理…' : ''))}</div>
               </div>
             )
           })}
@@ -1439,7 +1449,7 @@ export default function App() {
 
         {error && (
           <div className="err">
-            {/改用自己的(?:模型)?密钥|次已经用完|请求太频繁/.test(error) ? (
+            {OWN_KEY_HINT.test(error) ? (
               <>
                 {error
                   .replace(/；?\s*或点[上下方]*「改用自己的(?:模型)?密钥」[^。；]*/g, '')
@@ -1592,118 +1602,14 @@ export default function App() {
           </div>
         </form>
 
-        <footer className="pane-foot">
-          {serverModel && (
+        {serverModel && (
+          <footer className="pane-foot">
             <p className="model-line">
               {serverCfg.model?.model}，{authUser ? `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次` : `每人每天 ${serverCfg.dailyLimit} 次`}
               <button type="button" className="link-btn" onClick={switchToOwnKey}>改用自己的模型密钥</button>
             </p>
-          )}
-          {!serverModel && (
-          <details className="controls" ref={ownKeyPanelRef}>
-            <summary className={apiKey.trim() ? undefined : 'need'}>{apiKey.trim() ? '模型：自己的模型密钥' : '先连接模型，才能生成行程'}</summary>
-            {serverCfg.model && (
-              <button type="button" className="ghost" onClick={() => setOwnKey(false)}>改回服务端模型（登录即用）</button>
-            )}
-            <label>
-              <span>服务商</span>
-              <select
-                value={providerId}
-                onChange={(e) => {
-                  const next = getProvider(e.target.value)
-                  setProviderId(next.id)
-                  setModelId(next.models[0].id)
-                }}
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            {providerId === 'custom' ? (
-              <>
-                <label>
-                  <span>Base URL</span>
-                  <input value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
-                </label>
-                <label>
-                  <span>模型名</span>
-                  <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="gpt-4o" />
-                </label>
-              </>
-            ) : (
-              <label>
-                <span>模型</span>
-                <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
-                  {provider.models.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label>
-              <span>API Key</span>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => {
-                  const next = sanitizeApiKey(e.target.value)
-                  setApiKey(next)
-                  try { localStorage.removeItem('ct.keyBad') } catch { /* ignore */ }
-                  setError((prev) => (isAuthFail(prev) ? '' : prev))
-                }}
-                placeholder={provider.keyHint}
-                autoComplete="off"
-              />
-            </label>
-            {looksLikePageUrl(apiKey) && (
-              <div className="err">这里填模型密钥（{provider.keyHint}），不是网页地址</div>
-            )}
-            {!looksLikePageUrl(apiKey) && keyMismatchHint(providerId, apiKey) && (
-              <div className="err">{keyMismatchHint(providerId, apiKey)}</div>
-            )}
-          </details>
-          )}
-          {!(serverCfg.amap && serverCfg.tianditu && serverCfg.search) && (
-            <details className="controls">
-              <summary>数据来源（可选）</summary>
-              {!serverCfg.tianditu && (
-                <label>
-                  <span>地图（推荐·天地图）：个人可申请，国内稳定；补距离/耗时/公交</span>
-                  <input type="password" value={tiandituKey} onChange={(e) => setTiandituKey(e.target.value)} placeholder="天地图控制台 · 服务端 Key" autoComplete="off" />
-                </label>
-              )}
-              {!serverCfg.amap && (
-                <label>
-                  <span>地图（可选·高德）：能力更全，需企业认证时可不填</span>
-                  <input type="password" value={amapKey} onChange={(e) => setAmapKey(e.target.value)} placeholder="高德 Web 服务 Key（可选）" autoComplete="off" />
-                </label>
-              )}
-              {!serverCfg.search && (
-                <>
-                  <div className="controls-row">
-                    <label>
-                      <span>联网搜索</span>
-                      <select value={searchProvider} onChange={(e) => setSearchProvider(e.target.value)}>
-                        <option value="bocha">博查（国内推荐）</option>
-                        <option value="tavily">Tavily</option>
-                        <option value="serper">Serper</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>搜索 Key</span>
-                      <input type="password" value={searchKey} onChange={(e) => setSearchKey(e.target.value)} placeholder="选填" autoComplete="off" />
-                    </label>
-                  </div>
-                  <p className="plan-ask-hint">补充航班、酒店片区、当季活动等公开信息。大陆网络优先博查。</p>
-                </>
-              )}
-              {!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search && (
-                <p className="plan-ask-hint">不填也能用：出页按坐标估算距离与打车价；景点坐标/酒店价仍多为模型参考，请以官方渠道核实。</p>
-              )}
-            </details>
-          )}
-        </footer>
+          </footer>
+        )}
       </aside>
 
       <main className="stage">
@@ -1716,18 +1622,17 @@ export default function App() {
             <button type="button" onClick={() => void restyle()}>换皮</button>
             {versions.length > 1 && (
               <>
-                <select
-                  value={versionSel}
-                  onChange={(e) => setVersionSel(Number(e.target.value))}
-                  title="行程版本"
-                >
-                  <option value={-1}>回到上一版</option>
-                  {versions.map((v, i) => (
-                    <option key={`${v.label}-${i}`} value={i}>
-                      {i + 1}. {v.label}
-                    </option>
-                  ))}
-                </select>
+                <FieldSelect
+                  light
+                  compact
+                  aria-label="行程版本"
+                  value={String(versionSel)}
+                  options={[
+                    { value: '-1', label: '回到上一版' },
+                    ...versions.map((v, i) => ({ value: String(i), label: `${i + 1}. ${v.label}` })),
+                  ]}
+                  onChange={(v) => setVersionSel(Number(v))}
+                />
                 <button
                   type="button"
                   onClick={() => rollbackVersion(versionSel)}
@@ -1757,16 +1662,154 @@ export default function App() {
       </>
       )}
 
+      {keyDialogOpen && (
+        <div className="modal" onClick={() => setKeyDialogOpen(false)}>
+          <div className="sheet key-sheet" role="dialog" aria-labelledby="key-dialog-title" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="dialog-close" aria-label="关闭" onClick={() => setKeyDialogOpen(false)}>
+              <span aria-hidden="true">×</span>
+            </button>
+            <h2 id="key-dialog-title">模型密钥</h2>
+            <div className="controls">
+            {serverCfg.model && (
+              <button type="button" className="ghost" onClick={() => { setOwnKey(false); setKeyDialogOpen(false) }}>改回服务端模型（登录即用）</button>
+            )}
+            <label>
+              <span>服务商</span>
+              <FieldSelect
+                aria-label="服务商"
+                value={providerId}
+                options={PROVIDERS.map((p) => ({ value: p.id, label: p.name }))}
+                onChange={(id) => {
+                  const next = getProvider(id)
+                  setProviderId(next.id)
+                  setModelId(next.models[0].id)
+                }}
+              />
+            </label>
+            {providerId === 'custom' ? (
+              <>
+                <label>
+                  <span>Base URL</span>
+                  <input value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+                </label>
+                <label>
+                  <span>模型名</span>
+                  <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="gpt-4o" />
+                </label>
+              </>
+            ) : (
+              <label>
+                <span>模型</span>
+                <FieldSelect
+                  aria-label="模型"
+                  value={modelId}
+                  options={provider.models.map((m) => ({ value: m.id, label: m.name }))}
+                  onChange={setModelId}
+                />
+              </label>
+            )}
+            <label>
+              <span>API Key</span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => {
+                  const next = sanitizeApiKey(e.target.value)
+                  setApiKey(next)
+                  try { localStorage.removeItem('ct.keyBad') } catch { /* ignore */ }
+                  setError((prev) => (isAuthFail(prev) ? '' : prev))
+                }}
+                placeholder={provider.keyHint}
+                autoComplete="off"
+              />
+            </label>
+            {looksLikePageUrl(apiKey) && (
+              <div className="err">这里填模型密钥（{provider.keyHint}），不是网页地址</div>
+            )}
+            {!looksLikePageUrl(apiKey) && keyMismatchHint(providerId, apiKey) && (
+              <div className="err">{keyMismatchHint(providerId, apiKey)}</div>
+            )}
+            </div>
+          {!(serverCfg.amap && serverCfg.tianditu && serverCfg.search) && (
+            <div className="controls key-sources">
+              <h2 className="key-section-title">数据来源（可选）</h2>
+              {!serverCfg.tianditu && (
+                <label>
+                  <span>地图（推荐·天地图）：个人可申请，国内稳定；补距离/耗时/公交</span>
+                  <input type="password" value={tiandituKey} onChange={(e) => setTiandituKey(e.target.value)} placeholder="天地图控制台 · 服务端 Key" autoComplete="off" />
+                </label>
+              )}
+              {!serverCfg.amap && (
+                <label>
+                  <span>地图（可选·高德）：能力更全，需企业认证时可不填</span>
+                  <input type="password" value={amapKey} onChange={(e) => setAmapKey(e.target.value)} placeholder="高德 Web 服务 Key（可选）" autoComplete="off" />
+                </label>
+              )}
+              {!serverCfg.search && (
+                <>
+                  <div className="controls-row">
+                    <label>
+                      <span>联网搜索</span>
+                      <FieldSelect
+                        aria-label="联网搜索"
+                        value={searchProvider}
+                        options={[
+                          { value: 'bocha', label: '博查（国内推荐）' },
+                          { value: 'tavily', label: 'Tavily' },
+                          { value: 'serper', label: 'Serper' },
+                        ]}
+                        onChange={setSearchProvider}
+                      />
+                    </label>
+                    <label>
+                      <span>搜索 Key</span>
+                      <input type="password" value={searchKey} onChange={(e) => setSearchKey(e.target.value)} placeholder="选填" autoComplete="off" />
+                    </label>
+                  </div>
+                  <div className="controls-row">
+                    <label>
+                      <span>备用搜索</span>
+                      <FieldSelect
+                        aria-label="备用搜索"
+                        value={searchFallbackProvider}
+                        options={[
+                          { value: 'tavily', label: 'Tavily' },
+                          { value: 'serper', label: 'Serper' },
+                          { value: 'bocha', label: '博查' },
+                        ]}
+                        onChange={setSearchFallbackProvider}
+                      />
+                    </label>
+                    <label>
+                      <span>备用 Key</span>
+                      <input type="password" value={searchFallbackKey} onChange={(e) => setSearchFallbackKey(e.target.value)} placeholder="主源失败时用" autoComplete="off" />
+                    </label>
+                  </div>
+                  <p className="plan-ask-hint">补充航班、酒店片区、当季活动等公开信息。大陆网络优先博查；主源失败会自动换备用。</p>
+                </>
+              )}
+              {!amapKey.trim() && !tiandituKey.trim() && !searchKey.trim() && !searchFallbackKey.trim() && !serverCfg.amap && !serverCfg.tianditu && !serverCfg.search && (
+                <p className="plan-ask-hint">不填也能用：出页按坐标估算距离与打车价；景点坐标/酒店价仍多为模型参考，请以官方渠道核实。</p>
+              )}
+            </div>
+          )}
+            <button type="button" className="go" onClick={() => setKeyDialogOpen(false)}>完成</button>
+          </div>
+        </div>
+      )}
+
       {shareOpen && (
         <div className="modal" onClick={() => setShareOpen(false)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="dialog-close" aria-label="关闭" onClick={() => setShareOpen(false)}>
+              <span aria-hidden="true">×</span>
+            </button>
             <h2>发给同伴</h2>
             <p>H5 是一个单独的文件，微信或邮件直接传，对方离线也能打开。</p>
             <div className="sheet-actions">
               <button type="button" className="primary" onClick={() => void onShare()}>系统分享</button>
               <button type="button" onClick={() => void onCopy()}>复制 HTML</button>
               <button type="button" onClick={() => { exportH5(html); setShareOpen(false) }}>下载 H5</button>
-              <button type="button" className="ghost" onClick={() => setShareOpen(false)}>取消</button>
             </div>
           </div>
         </div>

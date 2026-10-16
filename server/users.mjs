@@ -354,7 +354,8 @@ function today(now = Date.now()) {
   return new Date(now + 8 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-// 用服务端模型的次数：按账号按天（北京时间）计，超过上限就拒绝
+// 用服务端模型的次数：按账号按天（北京时间）计，超过上限就拒绝。
+// 先占位扣次防并发超用；上游失败时用 refundQuota 退回。
 export function takeQuota(token, limit, { file = DEFAULT_FILE, now = Date.now(), bucket = '' } = {}) {
   const db = openDb(file)
   const found = token ? userFromToken(db, token) : null
@@ -364,12 +365,28 @@ export function takeQuota(token, limit, { file = DEFAULT_FILE, now = Date.now(),
     const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, day)
     const used = row ? Number(row.count) : 0
     if (used >= limit && bucket) return { ok: false, used, limit, error: '今天的请求太频繁，明天再来；也可改用自己的模型密钥继续。' }
-    if (used >= limit) return { ok: false, used, limit, error: `今天的 ${limit} 次已经用完，明天再来；也可改用自己的模型密钥继续。` }
+    if (used >= limit) return { ok: false, used, limit, error: `今天的 ${limit} 次免费额度已经用完，明天再来；也可改用自己的模型密钥继续。` }
     db.prepare(`
       INSERT INTO usage (user_id, day, count) VALUES (?, ?, 1)
       ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1
     `).run(found.user.id, day)
-    return { ok: true, used: used + 1, limit }
+    return { ok: true, used: used + 1, limit, day }
+  })
+}
+
+/** 模型调用失败时退回一次额度（不会低于 0） */
+export function refundQuota(token, { file = DEFAULT_FILE, now = Date.now(), bucket = '', day: dayHint = '' } = {}) {
+  const db = openDb(file)
+  const found = token ? userFromToken(db, token) : null
+  if (!found) return { ok: false }
+  const day = dayHint || (bucket ? `${today(now)}:${bucket}` : today(now))
+  return withWrite(db, () => {
+    const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, day)
+    const used = row ? Number(row.count) : 0
+    if (used <= 0) return { ok: true, used: 0 }
+    const next = used - 1
+    db.prepare('UPDATE usage SET count = ? WHERE user_id = ? AND day = ?').run(next, found.user.id, day)
+    return { ok: true, used: next }
   })
 }
 

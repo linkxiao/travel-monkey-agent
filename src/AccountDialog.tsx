@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 export type AuthScreen = 'login' | 'register' | 'account'
 
@@ -13,8 +13,21 @@ export type AuthInput = {
   password: string
 }
 
+const REMEMBER_EMAIL_KEY = 'ct.auth.email'
+
 function validEmail(value: string) {
   return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value.trim())
+}
+
+function loadRememberedEmail() {
+  try { return String(localStorage.getItem(REMEMBER_EMAIL_KEY) || '') } catch { return '' }
+}
+
+function rememberEmail(value: string) {
+  try {
+    const email = value.trim()
+    if (email) localStorage.setItem(REMEMBER_EMAIL_KEY, email)
+  } catch { /* ignore */ }
 }
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -43,7 +56,9 @@ export function AccountDialog({
   onSubmit,
   onRequestCode,
   onSignOut,
+  inline = false,
 }: {
+  inline?: boolean
   screen: AuthScreen
   success: AuthSuccess | null
   username: string
@@ -55,7 +70,7 @@ export function AccountDialog({
   onRequestCode: (input: { purpose: 'register'; account: string }) => Promise<{ channel?: string }>
   onSignOut: () => void
 }) {
-  const [account, setAccount] = useState('')
+  const [account, setAccount] = useState(() => loadRememberedEmail())
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -66,8 +81,8 @@ export function AccountDialog({
   const [codeHint, setCodeHint] = useState('')
   const [wait, setWait] = useState(0)
 
+  // 只在登录↔注册切换时清敏感字段；登录页保留邮箱，方便浏览器/本地回填
   useEffect(() => {
-    setAccount('')
     setCode('')
     setPassword('')
     setConfirm('')
@@ -77,7 +92,42 @@ export function AccountDialog({
     setLocalError('')
     setCodeHint('')
     setWait(0)
-  }, [screen, success?.kind])
+    if (screen === 'login') {
+      setAccount((prev) => prev || loadRememberedEmail())
+    } else if (screen === 'register') {
+      setAccount((prev) => prev || loadRememberedEmail())
+    }
+  }, [screen])
+
+  useEffect(() => {
+    if (!success) return
+    setCode('')
+    setPassword('')
+    setConfirm('')
+  }, [success?.kind])
+
+  // 弹窗打开时锁住背后页面，只让蒙层/卡片自己滚，始终对着可视区居中
+  useEffect(() => {
+    if (inline) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [inline])
+
+  const [fading, setFading] = useState(false)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
+  useEffect(() => {
+    setFading(false)
+    if (!success) return
+    const fade = window.setTimeout(() => setFading(true), 2000)
+    const done = window.setTimeout(() => closeRef.current(), 2500)
+    return () => {
+      window.clearTimeout(fade)
+      window.clearTimeout(done)
+    }
+  }, [success])
 
   useEffect(() => {
     if (wait <= 0) return
@@ -113,6 +163,7 @@ export function AccountDialog({
       setLocalError('请填写有效的邮箱')
       return
     }
+    rememberEmail(account)
     if (screen === 'register') {
       if (!/^\d{6}$/.test(code.trim())) {
         setLocalError('请输入您的验证码')
@@ -136,8 +187,140 @@ export function AccountDialog({
 
   const shownError = localError || error
 
+  const heading = (title: string) => inline ? <h2 className="sr-only">{title}</h2> : <h2 id="auth-title">{title}</h2>
+  const label = (text: string) => <span className="auth-label">{text}</span>
+  const hint = (inlineText: string, dialogText: string) => (inline ? inlineText : dialogText)
+  const swap = (prompt: string, action: string, target: AuthScreen) => inline ? (
+    <p className="auth-alt">
+      {prompt}
+      <button type="button" disabled={busy} onClick={() => onScreen(target)}>{action}</button>
+    </p>
+  ) : (
+    <button type="button" className="auth-switch" disabled={busy} onClick={() => onScreen(target)}>{prompt}{action}</button>
+  )
+
+  const body = success ? (
+    <>
+      <h2 id="auth-title">{success.kind === 'register' ? '注册成功' : '登录成功'}</h2>
+      <div className="auth-status ok">
+        <strong>账号 {success.username} 已登录</strong>
+      </div>
+    </>
+  ) : screen === 'account' ? (
+    <>
+      <h2 id="auth-title">已登录</h2>
+      <div className="auth-status">
+        <strong>账号 {username}</strong>
+        <span>退出只离开这台设备。</span>
+      </div>
+      <button type="button" className="auth-submit" onClick={onSignOut}>退出登录</button>
+    </>
+  ) : screen === 'register' ? (
+    <form onSubmit={submit}>
+      {heading('注册账号')}
+      <label>
+        {label('邮箱')}
+        <input
+          name="username"
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          autoComplete="username"
+          inputMode="email"
+          autoFocus
+          placeholder={hint('邮箱', 'name@example.com')}
+        />
+      </label>
+      <label>
+        {label('验证码')}
+        <span className="auth-code-row">
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder={hint('6 位验证码', '6 位数字')}
+          />
+          <button type="button" className="auth-send" disabled={busy || wait > 0} onClick={() => void askCode()}>
+            {wait > 0 ? `${wait} 秒后重发` : '发送验证码'}
+          </button>
+        </span>
+      </label>
+      {codeHint && <p className="auth-hint">{codeHint}</p>}
+      <label>
+        {label('密码')}
+        <span className="auth-secret">
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
+            placeholder={hint('设置密码，至少 8 位', '至少 8 位')}
+          />
+          <button type="button" className="auth-eye" aria-label={showPassword ? '隐藏密码' : '显示密码'} onClick={() => setShowPassword((open) => !open)}>
+            <EyeIcon open={showPassword} />
+          </button>
+        </span>
+      </label>
+      <label>
+        {label('确认密码')}
+        <span className="auth-secret">
+          <input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            type={showConfirm ? 'text' : 'password'}
+            autoComplete="new-password"
+            placeholder={hint('再输入一次密码', '再输入一次')}
+          />
+          <button type="button" className="auth-eye" aria-label={showConfirm ? '隐藏密码' : '显示密码'} onClick={() => setShowConfirm((open) => !open)}>
+            <EyeIcon open={showConfirm} />
+          </button>
+        </span>
+      </label>
+      {shownError && <p className="auth-error" role="alert">{shownError}</p>}
+      <button type="submit" className="auth-submit" disabled={busy}>{busy ? '正在注册…' : '注册'}</button>
+      {swap('已有账号？', '登录', 'login')}
+    </form>
+  ) : (
+    <form onSubmit={submit} method="post" autoComplete="on">
+      {heading('登录账号')}
+      <label>
+        {label('邮箱')}
+        <input
+          name="username"
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          autoComplete="username"
+          inputMode="email"
+          autoFocus
+          placeholder={hint('邮箱', 'name@example.com')}
+        />
+      </label>
+      <label>
+        {label('密码')}
+        <span className="auth-secret">
+          <input
+            name="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type={showLoginPassword ? 'text' : 'password'}
+            autoComplete="current-password"
+            placeholder={hint('密码', '输入密码')}
+          />
+          <button type="button" className="auth-eye" aria-label={showLoginPassword ? '隐藏密码' : '显示密码'} onClick={() => setShowLoginPassword((open) => !open)}>
+            <EyeIcon open={showLoginPassword} />
+          </button>
+        </span>
+      </label>
+      {shownError && <p className="auth-error" role="alert">{shownError}</p>}
+      <button type="submit" className="auth-submit" disabled={busy}>{busy ? '正在登录…' : '登录'}</button>
+      {swap('还没有账号？', '注册', 'register')}
+    </form>
+  )
+
+  if (inline) return <div className="gate-auth">{body}</div>
+
   return (
-    <div className="auth-mask" role="presentation" onMouseDown={close}>
+    <div className={fading ? 'auth-mask fading' : 'auth-mask'} role="presentation" onMouseDown={close}>
       <div
         className="auth-card"
         role="dialog"
@@ -145,122 +328,10 @@ export function AccountDialog({
         aria-labelledby="auth-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        {success ? (
-          <>
-            <h2 id="auth-title">{success.kind === 'register' ? '注册成功' : '登录成功'}</h2>
-            <div className="auth-status ok">
-              <strong>账号 {success.username} 已登录</strong>
-            </div>
-            <button type="button" className="auth-submit" onClick={close}>知道了</button>
-          </>
-        ) : screen === 'account' ? (
-          <>
-            <h2 id="auth-title">已登录</h2>
-            <div className="auth-status">
-              <strong>账号 {username}</strong>
-              <span>退出只离开这台设备。</span>
-            </div>
-            <button type="button" className="auth-submit" onClick={onSignOut}>退出登录</button>
-            <button type="button" className="auth-switch" onClick={close}>关闭</button>
-          </>
-        ) : screen === 'register' ? (
-          <form onSubmit={submit}>
-            <h2 id="auth-title">注册账号</h2>
-            <label>
-              帐户电子邮件
-              <input
-                value={account}
-                onChange={(e) => setAccount(e.target.value)}
-                autoComplete="email"
-                inputMode="email"
-                autoFocus
-                placeholder="请输入您的邮箱"
-              />
-            </label>
-            <label>
-              验证码
-              <span className="auth-code-row">
-                <input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="请输入您的验证码"
-                />
-                <button type="button" className="auth-send" disabled={busy || wait > 0} onClick={() => void askCode()}>
-                  {wait > 0 ? `${wait}秒` : '发送代码'}
-                </button>
-              </span>
-            </label>
-            {codeHint && <p className="auth-hint">{codeHint}</p>}
-            <label>
-              新密码
-              <span className="auth-secret">
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  placeholder="请输入您的密码"
-                />
-                <button type="button" className="auth-eye" aria-label={showPassword ? '隐藏密码' : '显示密码'} onClick={() => setShowPassword((open) => !open)}>
-                  <EyeIcon open={showPassword} />
-                </button>
-              </span>
-            </label>
-            <label>
-              确认密码
-              <span className="auth-secret">
-                <input
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  type={showConfirm ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  placeholder="请确认您的密码"
-                />
-                <button type="button" className="auth-eye" aria-label={showConfirm ? '隐藏密码' : '显示密码'} onClick={() => setShowConfirm((open) => !open)}>
-                  <EyeIcon open={showConfirm} />
-                </button>
-              </span>
-            </label>
-            {shownError && <p className="auth-error" role="alert">{shownError}</p>}
-            <button type="submit" className="auth-submit" disabled={busy}>{busy ? '正在提交…' : '提交'}</button>
-            <button type="button" className="auth-switch" disabled={busy} onClick={() => onScreen('login')}>去登录</button>
-          </form>
-        ) : (
-          <form onSubmit={submit}>
-            <h2 id="auth-title">登录账号</h2>
-            <label>
-              帐户电子邮件
-              <input
-                value={account}
-                onChange={(e) => setAccount(e.target.value)}
-                autoComplete="email"
-                inputMode="email"
-                autoFocus
-                placeholder="请输入您的邮箱"
-              />
-            </label>
-            <label>
-              密码
-              <span className="auth-secret">
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type={showLoginPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="请输入您的密码"
-                />
-                <button type="button" className="auth-eye" aria-label={showLoginPassword ? '隐藏密码' : '显示密码'} onClick={() => setShowLoginPassword((open) => !open)}>
-                  <EyeIcon open={showLoginPassword} />
-                </button>
-              </span>
-            </label>
-            {shownError && <p className="auth-error" role="alert">{shownError}</p>}
-            <button type="submit" className="auth-submit" disabled={busy}>{busy ? '正在登录…' : '登录'}</button>
-            <button type="button" className="auth-switch" disabled={busy} onClick={() => onScreen('register')}>去注册</button>
-          </form>
-        )}
+        <button type="button" className="dialog-close" aria-label="关闭" disabled={busy} onClick={close}>
+          <span aria-hidden="true">×</span>
+        </button>
+        {body}
       </div>
     </div>
   )

@@ -2,7 +2,7 @@ import dns from 'node:dns'
 import { applySkillSystem } from './skill-prompt.mjs'
 import { attachImages, loadImageForModel, MAX_IMAGES } from './images.mjs'
 import { dailyLimit, serverModel } from './config.mjs'
-import { bearerToken, takeQuota } from './users.mjs'
+import { bearerToken, refundQuota, takeQuota } from './users.mjs'
 
 dns.setDefaultResultOrder('ipv4first')
 
@@ -274,6 +274,7 @@ export function pickModel(body, token, modeName, { quota = takeQuota, server = s
   const apiKey = String(body.apiKey || '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/["'`]/g, '').replace(/\s+/g, '')
   if (!apiKey && server) {
     const limit = dailyLimit()
+    const bucket = modeName === 'route' ? 'route' : ''
     const taken = modeName === 'route'
       ? quota(token, limit * ROUTE_FACTOR, { bucket: 'route' })
       : quota(token, limit)
@@ -281,8 +282,14 @@ export function pickModel(body, token, modeName, { quota = takeQuota, server = s
       console.log(`[quota] ${modeName} 被拦下：${taken.error}`)
       throw new Error(taken.error)
     }
-    if (modeName !== 'route') console.log(`[quota] ${modeName} 扣 1 次，今天已用 ${taken.used}/${taken.limit}`)
-    return { provider: server.provider, model: server.model, apiKey: server.apiKey, customBaseUrl: server.baseUrl }
+    if (modeName !== 'route') console.log(`[quota] ${modeName} 预扣 1 次，今天已用 ${taken.used}/${taken.limit}（失败会退回）`)
+    return {
+      provider: server.provider,
+      model: server.model,
+      apiKey: server.apiKey,
+      customBaseUrl: server.baseUrl,
+      quotaCharge: { token, bucket, day: taken.day },
+    }
   }
   if (!apiKey) throw new Error('请先填写 API Key')
   if (looksLikePageUrl(apiKey)) {
@@ -292,7 +299,7 @@ export function pickModel(body, token, modeName, { quota = takeQuota, server = s
     throw new Error('密钥不完整。请从官网重新复制一整段，不要用打码或截断的片段。')
   }
   if (!body.model) throw new Error('请选择模型')
-  return { provider: body.provider || '', model: body.model, apiKey, customBaseUrl: body.customBaseUrl }
+  return { provider: body.provider || '', model: body.model, apiKey, customBaseUrl: body.customBaseUrl, quotaCharge: null }
 }
 
 export async function handleChat(req, res) {
@@ -301,6 +308,7 @@ export async function handleChat(req, res) {
   res.setHeader('Connection', 'keep-alive')
   let provider = ''
   let hadImages = false
+  let quotaCharge = null
   try {
     const body = await readBody(req)
     const { messages: rawMessages, mode } = body
@@ -308,6 +316,7 @@ export async function handleChat(req, res) {
     const modeName = ['plan', 'talk', 'edit', 'look', 'route'].includes(mode) ? mode : 'fill'
     const picked = pickModel(body, bearerToken(req), modeName)
     provider = picked.provider
+    quotaCharge = picked.quotaCharge || null
     const { model, apiKey, customBaseUrl } = picked
 
     const wanted = (Array.isArray(body.images) ? body.images : []).filter(Boolean)
@@ -333,6 +342,10 @@ export async function handleChat(req, res) {
     send(res, { done: true })
     res.end()
   } catch (err) {
+    if (quotaCharge?.token) {
+      const back = refundQuota(quotaCharge.token, { bucket: quotaCharge.bucket || '', day: quotaCharge.day || '' })
+      console.log(`[quota] 调用失败，已退回 1 次，今天已用 ${back.used ?? '?'}`)
+    }
     send(res, { error: formatError(err, provider, hadImages) })
     res.end()
   }

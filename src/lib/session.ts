@@ -1,5 +1,6 @@
 // 会话存 IndexedDB：localStorage 只有约 5MB，装不下多趟行程的整页 HTML 和版本。
 // 两个表：sessions 存全量，meta 只存列表要用的几项，切换列表不用把每趟的 HTML 都读出来。
+// 库名按账号隔离：同浏览器换账号不会看到别人的对话和行程。
 import type { Trip } from './trip.ts'
 
 export type SessionBubble = { role: 'user' | 'assistant'; text: string }
@@ -24,16 +25,40 @@ export type SessionData = {
   persona: string
   research: SessionResearch
   versions: Array<{ label: string; trip: Trip; html: string }>
+  seedId?: string
 }
 
 export type SessionStage = 'empty' | 'plan' | 'page'
 
-export type SessionMeta = { id: string; title: string; updatedAt: number; stage: SessionStage }
+export type SessionMeta = { id: string; title: string; updatedAt: number; stage: SessionStage; seedId?: string }
 
-const DB_NAME = 'travel-monkey'
 const DB_VERSION = 1
 const FULL = 'sessions'
 const META = 'meta'
+
+let owner = ''
+
+function normalizeOwner(username: string) {
+  return String(username || '').trim().toLowerCase()
+}
+
+/** 切换当前读写所属账号；空字符串表示未登录，禁止读写历史 */
+export function setSessionOwner(username: string) {
+  owner = normalizeOwner(username)
+}
+
+export function sessionOwner() {
+  return owner
+}
+
+function dbName() {
+  // 未登录用独立空库名也不写；读写前会再拦一道
+  return owner ? `travel-monkey:u:${owner}` : 'travel-monkey:anon'
+}
+
+export function sessionPointerKey() {
+  return owner ? `ct.session:${owner}` : 'ct.session'
+}
 
 export function newSessionId() {
   const c = globalThis.crypto as Crypto | undefined
@@ -60,8 +85,9 @@ export function isEmptySession(s: Pick<SessionData, 'trip' | 'planDraft' | 'bubb
 
 function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+  if (!owner) return Promise.resolve(null)
   return new Promise((resolve) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
+    const req = indexedDB.open(dbName(), DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(FULL)) db.createObjectStore(FULL, { keyPath: 'id' })
@@ -93,7 +119,7 @@ export async function saveSession(s: SessionData) {
   if (!db) return
   const tx = db.transaction([FULL, META], 'readwrite')
   tx.objectStore(FULL).put(s)
-  tx.objectStore(META).put({ id: s.id, title: s.title, updatedAt: s.updatedAt, stage: sessionStage(s) } satisfies SessionMeta)
+  tx.objectStore(META).put({ id: s.id, title: s.title, updatedAt: s.updatedAt, stage: sessionStage(s), seedId: s.seedId } satisfies SessionMeta)
   await done(tx)
   db.close()
 }

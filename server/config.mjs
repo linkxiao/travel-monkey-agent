@@ -51,12 +51,21 @@ export function serverTiandituKey() {
   return env('TIANDITU_KEY')
 }
 
+function asSearchProvider(raw, fallback = 'bocha') {
+  const p = String(raw || '').toLowerCase()
+  return p === 'serper' || p === 'tavily' || p === 'bocha' ? p : fallback
+}
+
 export function serverSearch() {
   const key = env('SEARCH_KEY')
-  if (!key) return null
-  const raw = env('SEARCH_PROVIDER').toLowerCase()
-  const provider = raw === 'serper' || raw === 'tavily' || raw === 'bocha' ? raw : 'bocha'
-  return { key, provider }
+  const fallbackKey = env('SEARCH_FALLBACK_KEY')
+  if (!key && !fallbackKey) return null
+  return {
+    key,
+    provider: asSearchProvider(env('SEARCH_PROVIDER'), 'bocha'),
+    fallbackKey,
+    fallbackProvider: asSearchProvider(env('SEARCH_FALLBACK_PROVIDER'), 'tavily'),
+  }
 }
 
 // 地图/搜索：用户自己填的优先，没填用服务端的
@@ -64,14 +73,20 @@ export function dataKeys(body = {}) {
   const search = serverSearch()
   const ownSearch = String(body.searchKey || '').trim()
   const ownProvider = String(body.searchProvider || '').toLowerCase()
+  const ownFallback = String(body.searchFallbackKey || '').trim()
+  const ownFallbackPv = String(body.searchFallbackProvider || '').toLowerCase()
   const provider = ownSearch
-    ? (ownProvider === 'serper' || ownProvider === 'tavily' || ownProvider === 'bocha' ? ownProvider : 'bocha')
-    : (search?.provider || (ownProvider === 'serper' || ownProvider === 'tavily' || ownProvider === 'bocha' ? ownProvider : 'bocha'))
+    ? asSearchProvider(ownProvider, 'bocha')
+    : (search?.provider || asSearchProvider(ownProvider, 'bocha'))
   return {
     amapKey: String(body.amapKey || '').trim() || serverAmapKey(),
     tiandituKey: String(body.tiandituKey || '').trim() || serverTiandituKey(),
     searchKey: ownSearch || search?.key || '',
     searchProvider: provider,
+    searchFallbackKey: ownFallback || search?.fallbackKey || '',
+    searchFallbackProvider: ownFallback
+      ? asSearchProvider(ownFallbackPv, 'tavily')
+      : (search?.fallbackProvider || asSearchProvider(ownFallbackPv, 'tavily')),
   }
 }
 
@@ -82,11 +97,12 @@ export function dailyLimit() {
 
 export function publicConfig() {
   const model = serverModel()
+  const search = serverSearch()
   return {
     model: model ? { provider: model.provider, model: model.model } : null,
     amap: Boolean(serverAmapKey()),
     tianditu: Boolean(serverTiandituKey()),
-    search: Boolean(serverSearch()),
+    search: Boolean(search?.key || search?.fallbackKey),
     dailyLimit: dailyLimit(),
   }
 }

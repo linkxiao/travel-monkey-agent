@@ -15,6 +15,8 @@ export async function fetchResearch(opts: {
   tiandituKey?: string
   searchKey?: string
   searchProvider?: string
+  searchFallbackKey?: string
+  searchFallbackProvider?: string
 }): Promise<ResearchBrief> {
   const res = await fetch('/api/research', {
     method: 'POST',

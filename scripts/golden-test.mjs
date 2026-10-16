@@ -21,8 +21,9 @@ import { enrichTripTickets, enrichTripTransport } from '../server/transport.mjs'
 import { qualityChecklist } from '../server/quality.mjs'
 import { hoursIssues, parseOpenText } from '../server/hours.mjs'
 import net from 'node:net'
-import { loginUser, normalizeEmail, quotaLeft, registerUser, requestVerify, sessionUser, takeQuota } from '../server/users.mjs'
+import { loginUser, normalizeEmail, quotaLeft, refundQuota, registerUser, requestVerify, sessionUser, takeQuota } from '../server/users.mjs'
 import { dataKeys, publicConfig } from '../server/config.mjs'
+import { searchWeb } from '../server/search.mjs'
 import { pickModel } from '../server/chat-proxy.mjs'
 import { sendMail } from '../server/deliver.mjs'
 import { todayAdvice } from '../src/lib/today.ts'
@@ -688,6 +689,8 @@ ok('正常标题原样保留', tripTitle({ title: '京都奈良 5 日寺社之�
 const noon = Date.parse('2026-10-11T04:00:00Z')
 ok('没登录不能用服务端模型', takeQuota('', 2, { file, now: noon }).ok === false)
 ok('登录后按次计数', takeQuota(again.token, 2, { file, now: noon }).used === 1 && takeQuota(again.token, 2, { file, now: noon }).used === 2)
+ok('失败可退回额度', refundQuota(again.token, { file, now: noon }).used === 1 && quotaLeft(again.token, 2, { file, now: noon }) === 1)
+ok('退回后再扣仍计数', takeQuota(again.token, 2, { file, now: noon }).used === 2)
 ok('当天用满就拒绝', takeQuota(again.token, 2, { file, now: noon }).ok === false && quotaLeft(again.token, 2, { file, now: noon }) === 0)
 ok('另一个账号的次数不受影响', quotaLeft(second.token, 2, { file, now: noon }) === 2)
 ok('第二天次数重置', quotaLeft(again.token, 2, { file, now: noon + 24 * 3600 * 1000 }) === 2)
@@ -697,7 +700,7 @@ const yes = () => ({ ok: true })
 const picked = pickModel({ apiKey: '', messages: [1] }, 'tok', 'plan', { server: fakeServer, quota: yes })
 ok('没填密钥时用服务端模型', picked.apiKey === fakeServer.apiKey && picked.model === 'deepseek-chat')
 ok('自己填了密钥就用自己的，不扣服务端次数', pickModel({ apiKey: 'sk-own-key-1234567890abcd', model: 'm', provider: 'openai' }, '', 'plan', { server: fakeServer, quota: () => { throw new Error('不该计次') } }).provider === 'openai')
-ok('服务端次数用完给出提示', (() => { try { pickModel({ apiKey: '' }, 'tok', 'plan', { server: fakeServer, quota: () => ({ ok: false, error: '今天的 2 次已经用完' }) }); return false } catch (err) { return /用完/.test(err.message) } })())
+ok('服务端次数用完给出提示', (() => { try { pickModel({ apiKey: '' }, 'tok', 'plan', { server: fakeServer, quota: () => ({ ok: false, error: '今天的 2 次免费额度已经用完' }) }); return false } catch (err) { return /用完/.test(err.message) } })())
 ok('分流请求单独封顶，不占用户次数', (() => {
   const calls = []
   pickModel({ apiKey: '' }, 'tok', 'route', { server: fakeServer, quota: (t, limit, opts) => { calls.push({ limit, bucket: opts?.bucket }); return { ok: true } } })
@@ -710,16 +713,44 @@ const savedEnv = { ...process.env }
 Object.assign(process.env, {
   LLM_PROVIDER: 'deepseek', LLM_MODEL: 'deepseek-chat', LLM_API_KEY: 'sk-env-secret-123456789',
   AMAP_KEY: 'amap-secret-1', TIANDITU_KEY: 'tdt-secret-1',
-  SEARCH_KEY: 'search-secret-1', SEARCH_PROVIDER: 'bocha', LLM_DAILY_LIMIT: '30',
+  SEARCH_KEY: 'search-secret-1', SEARCH_PROVIDER: 'bocha',
+  SEARCH_FALLBACK_KEY: 'fallback-secret-1', SEARCH_FALLBACK_PROVIDER: 'tavily',
+  LLM_DAILY_LIMIT: '30',
 })
 const pub = JSON.stringify(publicConfig())
 ok('配置接口只说配没配，不回传密钥', pub.includes('"amap":true') && pub.includes('"tianditu":true') && pub.includes('"dailyLimit":30') && !/secret/.test(pub))
 const keys = dataKeys({ amapKey: '', tiandituKey: '', searchKey: '' })
 ok('地图和搜索没填时用服务端的', keys.amapKey === 'amap-secret-1' && keys.tiandituKey === 'tdt-secret-1' && keys.searchKey === 'search-secret-1' && keys.searchProvider === 'bocha')
+ok('搜索备用从服务端带出', keys.searchFallbackKey === 'fallback-secret-1' && keys.searchFallbackProvider === 'tavily')
 ok('用户自己填的地图和搜索优先', dataKeys({ amapKey: 'mine', searchKey: 'mine2', searchProvider: 'tavily' }).searchProvider === 'tavily' && dataKeys({ amapKey: 'mine' }).amapKey === 'mine')
-for (const key of ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY', 'AMAP_KEY', 'TIANDITU_KEY', 'SEARCH_KEY', 'SEARCH_PROVIDER', 'LLM_DAILY_LIMIT']) {
+ok('用户只填主源时仍带服务端备用', dataKeys({ searchKey: 'mine2', searchProvider: 'bocha' }).searchFallbackKey === 'fallback-secret-1')
+for (const key of ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY', 'AMAP_KEY', 'TIANDITU_KEY', 'SEARCH_KEY', 'SEARCH_PROVIDER', 'SEARCH_FALLBACK_KEY', 'SEARCH_FALLBACK_PROVIDER', 'LLM_DAILY_LIMIT']) {
   if (key in savedEnv) process.env[key] = savedEnv[key]
   else delete process.env[key]
+}
+
+{
+  const origFetch = globalThis.fetch
+  const called = []
+  globalThis.fetch = async (url) => {
+    const u = String(url)
+    called.push(u)
+    if (u.includes('bochaai')) {
+      return { ok: false, status: 401, json: async () => ({ message: '额度不足' }) }
+    }
+    if (u.includes('tavily')) {
+      return { ok: true, status: 200, json: async () => ({ results: [{ title: '备用命中', content: 'ok', url: 'https://example.com' }] }) }
+    }
+    return { ok: false, status: 500, json: async () => ({}) }
+  }
+  const hits = await searchWeb('测试查询', {
+    searchKey: 'bocha-key',
+    searchProvider: 'bocha',
+    searchFallbackKey: 'tavily-key',
+    searchFallbackProvider: 'tavily',
+  })
+  globalThis.fetch = origFetch
+  ok('博查失败自动回退 Tavily', hits.length === 1 && hits[0].title === '备用命中' && called.some((u) => u.includes('bochaai')) && called.some((u) => u.includes('tavily')))
 }
 
 const smtp = await new Promise((resolve) => {

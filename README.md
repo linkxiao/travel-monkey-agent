@@ -28,7 +28,7 @@ npm run dev
 
 两种方式都支持，用户自己填的优先：
 
-- **服务端统一配置**：在 `.env` 填 `LLM_PROVIDER` / `LLM_MODEL` / `LLM_API_KEY`（见 `.env.example`）后，页面不再显示模型和密钥输入框，改为「模型已就绪」。服务端模型只给登录用户用，每人每天 `LLM_DAILY_LIMIT` 次（默认 10，北京时间零点重置；内部分流请求不计次）。`TIANDITU_KEY` / `AMAP_KEY`、`SEARCH_PROVIDER` / `SEARCH_KEY` 配了之后，页面上对应的输入项也会隐藏。`/api/config` 只返回「配没配」，不回传任何密钥。
+- **服务端统一配置**：在 `.env` 填 `LLM_PROVIDER` / `LLM_MODEL` / `LLM_API_KEY`（见 `.env.example`）后，页面不再显示模型和密钥输入框，改为「模型已就绪」。服务端模型只给登录用户用，每人每天 `LLM_DAILY_LIMIT` 次（默认 10，北京时间零点重置；内部分流请求不计次）。`TIANDITU_KEY` / `AMAP_KEY`、`SEARCH_PROVIDER` / `SEARCH_KEY`（可选 `SEARCH_FALLBACK_PROVIDER` / `SEARCH_FALLBACK_KEY`，主源失败自动换备用）配了之后，页面上对应的输入项也会隐藏。`/api/config` 只返回「配没配」，不回传任何密钥。
 - **用户自己填**：服务端没配，或用户点「改用自己的模型密钥」时，在页面填写，只存在浏览器本地，每次请求随 `/api/chat` 带给服务端转发，服务端不落盘。
   - **模型 API Key**
   - **地图（推荐天地图 `TIANDITU_KEY`，可选高德 `AMAP_KEY`）**：优先级 高德 > 天地图 > 本地直线估算。天地图个人可申请、国内稳定；高德能力更全但认证更麻烦

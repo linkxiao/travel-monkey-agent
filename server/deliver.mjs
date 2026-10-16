@@ -1,25 +1,7 @@
 // 验证码真正发出去：邮件走 SMTP。没配好就明确失败，不假装已发送。
-import fs from 'node:fs'
 import net from 'node:net'
-import path from 'node:path'
 import tls from 'node:tls'
-import { fileURLToPath } from 'node:url'
-
-function loadLocalEnv() {
-  const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.env')
-  if (!fs.existsSync(file)) return
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq < 1) continue
-    const key = trimmed.slice(0, eq).trim()
-    if (process.env[key]) continue
-    process.env[key] = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '')
-  }
-}
-
-loadLocalEnv()
+import './config.mjs'
 
 export function mailReady() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
