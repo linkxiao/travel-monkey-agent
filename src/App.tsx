@@ -1113,6 +1113,7 @@ export default function App() {
     const broken = keyLooksUnusable(key)
     if (broken) {
       setError(broken)
+      if (broken === '请先粘贴模型密钥') setKeyDialogOpen(true)
       return false
     }
     const mismatch = keyMismatchHint(providerId, key)
