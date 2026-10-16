@@ -58,26 +58,54 @@ function shareFile(id, dir) {
   return file
 }
 
+function isSharePhoto(src) {
+  const value = String(src || '').trim()
+  if (!value || /^(?:data|blob):/i.test(value)) return false
+  if (/\.svg(?:$|[?#])/i.test(value) || /favicon|sprite|logo|icon/i.test(value)) return false
+  if (/\/travel-photo\?/i.test(value) || /(^|\/)travel-photo\?/i.test(value)) return true
+  return /\.(?:jpe?g|png|webp|gif)(?:$|[?#])/i.test(value)
+}
+
+/** 代理地址里的 https 原图。微信抓缩略图不认 http，能用原图就用原图。 */
+function upstreamHttps(src) {
+  const value = String(src || '').trim()
+  if (!value) return ''
+  try {
+    const url = new URL(value, 'http://share.local')
+    if (url.pathname === '/travel-photo') {
+      const inner = url.searchParams.get('u') || ''
+      return /^https:\/\//i.test(inner) ? inner : ''
+    }
+  } catch { /* 不是可解析的地址 */ }
+  return /^https:\/\//i.test(value) && isSharePhoto(value) ? value : ''
+}
+
 export function extractShareMeta(html) {
-  const titleMatch = String(html || '').match(/<title>([^<]*)<\/title>/i)
+  const raw = String(html || '')
+  const titleMatch = raw.match(/<title>([^<]*)<\/title>/i)
   const title = textify(titleMatch?.[1] || '') || 'Travel Monkey 行程'
-  const sub = String(html || '').match(/class="hero-sub"[^>]*>([\s\S]*?)<\/div>/i)
+  const sub = raw.match(/class=["'][^"']*hero-sub[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|p|h1|h2)>/i)
   const description = textify(sub?.[1] || '').slice(0, 120) || '打开查看每天的路线、三餐和住宿。'
   const found = []
   const urlRe = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi
   const imgRe = /<img[^>]+src=['"]([^'"]+)['"]/gi
-  let match = urlRe.exec(html || '')
+  let match = urlRe.exec(raw)
   while (match) {
     found.push(match[1])
-    match = urlRe.exec(html || '')
+    match = urlRe.exec(raw)
   }
-  match = imgRe.exec(html || '')
+  match = imgRe.exec(raw)
   while (match) {
     found.push(match[1])
-    match = imgRe.exec(html || '')
+    match = imgRe.exec(raw)
   }
-  const image = found.find((src) => /\.(?:jpe?g|png|webp|gif)(?:$|[?#])/i.test(src) && !src.startsWith('data:')) || ''
+  const image = found.find((src) => isSharePhoto(src)) || ''
   return { title, description, image }
+}
+
+/** 分享卡片用的图：优先 https 原图，否则落到本站绝对地址。 */
+export function shareCardImage(origin, src) {
+  return upstreamHttps(src) || absoluteUrl(origin, src)
 }
 
 export function absoluteUrl(origin, src) {
@@ -220,7 +248,7 @@ function wechatBoot(config, card) {
 
 export function decorateShareHtml(html, { pageUrl, origin, wechat = null } = {}) {
   const meta = extractShareMeta(html)
-  const image = absoluteUrl(origin, meta.image)
+  const image = shareCardImage(origin, meta.image)
   const tags = [
     `<meta name="description" content="${escAttr(meta.description)}">`,
     '<meta property="og:type" content="website">',
@@ -372,7 +400,15 @@ export async function handleSharePublish(req, res) {
     const body = JSON.parse(raw || '{}')
     const id = publishShareHtml(body.html)
     const origin = requestOrigin(req)
-    send(200, { id, url: origin ? `${origin}/s/${id}` : `/s/${id}` })
+    const meta = extractShareMeta(body.html)
+    const page = origin ? `${origin}/s/${id}` : `/s/${id}`
+    send(200, {
+      id,
+      url: page,
+      title: meta.title,
+      description: meta.description,
+      image: absoluteUrl(origin, meta.image),
+    })
   } catch (err) {
     send(err?.status || 400, { error: err?.message || '链接生成失败' })
   }

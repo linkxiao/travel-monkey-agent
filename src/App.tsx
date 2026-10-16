@@ -3,7 +3,8 @@ import { renderSVG } from 'uqr'
 import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
 import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type ServerConfig } from './lib/chat'
 import { copyText } from './lib/clipboard'
-import { exportH5, exportImage, publishShare, shareReach } from './lib/export'
+import { downloadBlob, exportH5, exportImage, needsMobileImageSheet, publishShare, shareJpegFile, shareReach, shareTripLink, type ShareCard } from './lib/export'
+import { formatShareSnippet, sharePlainText } from './lib/shareSnippet'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
 import { fetchResearch, type ResearchBrief } from './lib/research'
@@ -100,8 +101,13 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [shareUrl, setShareUrl] = useState('')
+  const [shareCard, setShareCard] = useState<ShareCard>({ url: '', title: '', description: '', image: '' })
   const [shareBusy, setShareBusy] = useState(false)
   const [shareError, setShareError] = useState('')
+  const [shareLinkOpen, setShareLinkOpen] = useState(false)
+  const [imageBusy, setImageBusy] = useState(false)
+  const [imageExport, setImageExport] = useState<{ url: string; filename: string; blob: Blob } | null>(null)
+  const shareSnippetRef = useRef<HTMLTextAreaElement>(null)
   const [skillLabel, setSkillLabel] = useState('')
   const [amapKey, setAmapKey] = useState(() => loadSetting('ct.amap', ''))
   const [tiandituKey, setTiandituKey] = useState(() => loadSetting('ct.tianditu', ''))
@@ -1444,18 +1450,38 @@ export default function App() {
     }
   }
 
+  const shareSnippet = useMemo(() => formatShareSnippet(trip), [trip])
+  const preferSnippetShare = needsMobileImageSheet()
+
   useEffect(() => {
-    if (!shareOpen) return
+    if (!shareOpen) {
+      setShareLinkOpen(false)
+      setShareUrl('')
+      setShareError('')
+      setShareBusy(false)
+      return
+    }
+    // 手机默认走文案/长图；桌面仍自动生成链接
+    if (!preferSnippetShare) setShareLinkOpen(true)
+  }, [shareOpen, preferSnippetShare])
+
+  useEffect(() => {
+    if (!shareOpen || !shareLinkOpen) return
     let cancel = false
     setShareUrl('')
+    setShareCard({ url: '', title: '', description: '', image: '' })
     setShareError('')
     setShareBusy(true)
     publishShare(html, authTokenRef.current)
-      .then((url) => { if (!cancel) setShareUrl(url) })
+      .then((card) => { if (!cancel) { setShareCard(card); setShareUrl(card.url) } })
       .catch((err) => { if (!cancel) setShareError(err instanceof Error ? err.message : '链接生成失败') })
       .finally(() => { if (!cancel) setShareBusy(false) })
     return () => { cancel = true }
-  }, [shareOpen, html])
+  }, [shareOpen, shareLinkOpen, html])
+
+  useEffect(() => () => {
+    if (imageExport?.url) URL.revokeObjectURL(imageExport.url)
+  }, [imageExport])
 
   const shareQr = useMemo(() => (
     shareUrl
@@ -1463,11 +1489,51 @@ export default function App() {
       : ''
   ), [shareUrl])
 
+  async function onCopySnippet() {
+    if (!shareSnippet) {
+      setShareError('还没有行程可分享，请先生成一页')
+      return
+    }
+    setShareError('')
+    const ok = await copyText(shareSnippet)
+    if (ok) {
+      shareSnippetRef.current?.focus()
+      shareSnippetRef.current?.select()
+      showToast('文案已复制，打开微信粘贴发给好友即可')
+    } else {
+      shareSnippetRef.current?.focus()
+      shareSnippetRef.current?.select()
+      setShareError('没有复制成功，请长按上方文案手动复制')
+    }
+  }
+
+  async function onShareSnippet() {
+    if (!shareSnippet) {
+      setShareError('还没有行程可分享，请先生成一页')
+      return
+    }
+    setShareError('')
+    const result = await sharePlainText({ title: trip?.title || '行程', text: shareSnippet })
+    if (result === 'shared' || result === 'aborted') return
+    await onCopySnippet()
+  }
+
+  async function onShareLongImage() {
+    setShareOpen(false)
+    await onImage()
+  }
+
+  function shareClip() {
+    const title = shareCard.title || trip?.title || ''
+    const description = shareCard.description && shareCard.description !== title ? shareCard.description : ''
+    return [title, description, shareUrl].filter(Boolean).join('\n')
+  }
+
   async function onCopyLink() {
     if (!shareUrl) return
     setShareError('')
-    const ok = await copyText(shareUrl, shareLinkRef.current)
-    if (ok) showToast('链接已复制，可以粘贴到微信')
+    const ok = await copyText(shareClip(), shareLinkRef.current)
+    if (ok) showToast('摘要和链接已复制，可以粘贴到微信')
     else {
       shareLinkRef.current?.focus()
       shareLinkRef.current?.select()
@@ -1476,25 +1542,62 @@ export default function App() {
   }
 
   async function onSendLink() {
-    if (!shareUrl || !navigator.share) return
-    try {
-      await navigator.share({ title: trip?.title || '行程', url: shareUrl })
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      setShareError(err instanceof Error ? err.message : '没有发出去')
-    }
+    if (!shareUrl) return
+    setShareError('')
+    const result = await shareTripLink({
+      ...shareCard,
+      url: shareUrl,
+      title: shareCard.title || trip?.title || '行程',
+    })
+    if (result === 'aborted') return
+    if (result === 'unavailable') setShareError('没有发出去')
+  }
+
+  function closeImageExport() {
+    setImageExport((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url)
+      return null
+    })
   }
 
   async function onImage() {
+    if (imageBusy) return
+    setImageBusy(true)
     try {
       showToast('正在导出长图…')
-      await exportImage(html, device)
-      showToast('长图已开始下载')
+      const { blob, filename } = await exportImage(html, device)
+      if (needsMobileImageSheet()) {
+        setImageExport((prev) => {
+          if (prev?.url) URL.revokeObjectURL(prev.url)
+          return { url: URL.createObjectURL(blob), filename, blob }
+        })
+        showToast('长图已生成，请保存或分享')
+      } else {
+        downloadBlob(blob, filename)
+        showToast('长图已开始下载')
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
       showToast(msg)
+    } finally {
+      setImageBusy(false)
     }
+  }
+
+  async function onShareImage() {
+    if (!imageExport) return
+    const file = new File([imageExport.blob], imageExport.filename, { type: 'image/jpeg' })
+    const result = await shareJpegFile(file)
+    if (result === 'shared' || result === 'aborted') return
+    showToast('请长按上方图片，保存到相册')
+  }
+
+  function onSaveImage() {
+    if (!imageExport) return
+    downloadBlob(imageExport.blob, imageExport.filename)
+    const opened = window.open(imageExport.url, '_blank', 'noopener')
+    if (!opened) showToast('请长按上方图片，保存到相册')
   }
 
   const signedIn = Boolean(authUser)
@@ -1920,7 +2023,7 @@ export default function App() {
             )}
             {import.meta.env.DEV && <button type="button" onClick={() => void saveAsSeed()}>存为示例</button>}
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
-            <button type="button" onClick={() => void onImage()}>导出图片</button>
+            <button type="button" disabled={imageBusy} onClick={() => void onImage()}>{imageBusy ? '导出中…' : '导出图片'}</button>
             <button type="button" className="primary export-h5" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
           </div>}
         </div>
@@ -2114,6 +2217,26 @@ export default function App() {
         </div>
       )}
 
+      {imageExport && (
+        <div className="modal" onClick={closeImageExport}>
+          <div className="sheet image-sheet" role="dialog" aria-labelledby="image-export-title" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="dialog-close" aria-label="关闭" onClick={closeImageExport}>
+              <span aria-hidden="true">×</span>
+            </button>
+            <h2 id="image-export-title">保存长图</h2>
+            <p className="share-lead">手机浏览器不会直接下载。长按图片保存到相册，或点分享发到微信。</p>
+            <div className="image-export-preview">
+              <img src={imageExport.url} alt={imageExport.filename} />
+            </div>
+            <div className="sheet-actions">
+              {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                <button type="button" className="primary" onClick={() => void onShareImage()}>分享</button>
+              )}
+              <button type="button" onClick={onSaveImage}>保存</button>
+            </div>
+          </div>
+        </div>
+      )}
       {shareOpen && (
         <div className="modal" onClick={() => setShareOpen(false)}>
           <div className="sheet share-sheet" role="dialog" aria-labelledby="share-title" onClick={(e) => e.stopPropagation()}>
@@ -2121,40 +2244,77 @@ export default function App() {
               <span aria-hidden="true">×</span>
             </button>
             <h2 id="share-title">分享行程</h2>
-            <p className="share-lead">把链接发到微信聊天，对方就能打开这份行程。在微信里点右上角「···」，还可以发给其他好友或分享到朋友圈。</p>
-            {shareBusy && <p className="share-status">正在生成链接…</p>}
+            <p className="share-lead">
+              {preferSnippetShare
+                ? '网页不能直接打开微信好友列表或朋友圈。发给好友用「行程文案」，发朋友圈用「长图」。'
+                : '可复制行程文案发给好友；需要完整网页时再生成链接。'}
+            </p>
             {shareError && <p className="share-note">{shareError}</p>}
-            {shareUrl && (
+
+            {shareSnippet ? (
               <>
-                {shareReach(shareUrl) === 'local' && (
-                  <p className="share-note">这是本机地址，手机上的微信打不开。请用手机能访问的网址打开后再分享。</p>
-                )}
-                {shareReach(shareUrl) !== 'local' && shareUrl.startsWith('http://') && (
-                  <p className="share-note">当前链接只在这个网络里打得开。要发给外面的朋友，在 .env 填写 PUBLIC_BASE_URL（公网 https 域名）。</p>
-                )}
-                <div
-                  className="share-qr"
-                  role="img"
-                  aria-label="用微信扫码打开"
-                  dangerouslySetInnerHTML={{ __html: shareQr }}
-                />
-                <input
-                  ref={shareLinkRef}
-                  className="share-link"
+                <textarea
+                  ref={shareSnippetRef}
+                  className="share-snippet"
                   readOnly
-                  value={shareUrl}
-                  aria-label="分享链接"
+                  value={shareSnippet}
+                  aria-label="行程分享文案"
+                  rows={preferSnippetShare ? 10 : 8}
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <div className="sheet-actions">
-                  <button type="button" className="primary" onClick={() => void onCopyLink()}>复制链接</button>
                   {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
-                    <button type="button" onClick={() => void onSendLink()}>发送</button>
+                    <button type="button" className="primary" onClick={() => void onShareSnippet()}>发到微信</button>
                   )}
-                  <button type="button" onClick={() => { exportH5(html); showToast('H5 已下载') }}>下载 H5</button>
+                  <button type="button" className={typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? '' : 'primary'} onClick={() => void onCopySnippet()}>复制文案</button>
+                  <button type="button" disabled={imageBusy || !html.trim()} onClick={() => void onShareLongImage()}>
+                    {imageBusy ? '出图中…' : '分享长图'}
+                  </button>
                 </div>
               </>
+            ) : (
+              <p className="share-note">还没有行程可分享，请先生成一页。</p>
             )}
+
+            <details
+              className="share-link-fold"
+              open={shareLinkOpen}
+              onToggle={(e) => setShareLinkOpen((e.currentTarget as HTMLDetailsElement).open)}
+            >
+              <summary>还要 H5 链接 / 二维码</summary>
+              {shareBusy && <p className="share-status">正在生成链接…</p>}
+              {shareUrl && (
+                <>
+                  {shareReach(shareUrl) === 'local' && (
+                    <p className="share-note">这是本机地址，手机上的微信打不开。请用手机能访问的网址打开后再分享。</p>
+                  )}
+                  {shareReach(shareUrl) !== 'local' && shareUrl.startsWith('http://') && (
+                    <p className="share-note">当前是 http 链接。要发给外面的朋友，建议配置公网 https 域名。</p>
+                  )}
+                  <div
+                    className="share-qr"
+                    role="img"
+                    aria-label="用微信扫码打开"
+                    dangerouslySetInnerHTML={{ __html: shareQr }}
+                  />
+                  <input
+                    ref={shareLinkRef}
+                    className="share-link"
+                    readOnly
+                    value={shareUrl}
+                    aria-label="分享链接"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <div className="sheet-actions">
+                    <button type="button" className="primary" onClick={() => void onCopyLink()}>复制链接</button>
+                    {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                      <button type="button" onClick={() => void onSendLink()}>发送链接</button>
+                    )}
+                    <button type="button" onClick={() => { exportH5(html); showToast('H5 已下载') }}>下载 H5</button>
+                  </div>
+                </>
+              )}
+            </details>
           </div>
         </div>
       )}

@@ -43,11 +43,64 @@ function captureMarkup(html: string) {
   return `<!DOCTYPE html>\n${parsed.documentElement.outerHTML}`
 }
 
+export function needsMobileImageSheet() {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const android = /Android/i.test(ua)
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches
+  const narrow = window.matchMedia?.('(max-width: 900px)').matches
+  return iOS || android || Boolean(coarse && narrow)
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+export async function shareJpegFile(file: File): Promise<'shared' | 'aborted' | 'unavailable'> {
+  const payload = { files: [file], title: file.name }
+  if (typeof navigator.canShare === 'function') {
+    try {
+      if (!navigator.canShare(payload)) return 'unavailable'
+    } catch {
+      return 'unavailable'
+    }
+  } else if (typeof navigator.share !== 'function') {
+    return 'unavailable'
+  }
+  try {
+    await navigator.share(payload)
+    return 'shared'
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
+    return 'unavailable'
+  }
+}
+
+function jpegBlob(dataUrl: string) {
+  const comma = dataUrl.indexOf(',')
+  const raw = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  const binary = atob(raw)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: 'image/jpeg' })
+}
+
 function openExportFrame(html: string, width: number) {
   const iframe = document.createElement('iframe')
   iframe.title = '导出'
   iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin')
-  iframe.style.cssText = `position:fixed;left:-12000px;top:0;width:${width}px;height:100vh;border:0;opacity:0;pointer-events:none`
+  // iOS Safari 不绘制 left:-12000 的 iframe，html-to-image 会得到空白图。
+  // 留在视口内、几乎透明，才能算出真实布局。
+  iframe.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:100vh;border:0;opacity:0.01;pointer-events:none;z-index:0`
   const markup = captureMarkup(html)
   return new Promise<{ iframe: HTMLIFrameElement, doc: Document, win: Window }>((resolve, reject) => {
     let settled = false
@@ -113,15 +166,6 @@ function skipCapture(node: HTMLElement) {
   const cls = typeof node.className === 'string' ? node.className : ''
   if (id === 'map' || cls.includes('leaflet') || cls.includes('hero-petals') || cls.includes('carousel-dots')) return false
   return true
-}
-
-function downloadDataUrl(dataUrl: string, filename: string) {
-  const a = document.createElement('a')
-  a.href = dataUrl
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
 }
 
 async function withTimeout<T>(work: Promise<T>, ms: number, label: string) {
@@ -230,6 +274,10 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
     restore = lockPreview(iframe, doc, width)
     await nextFrame(win)
     const height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 14000)
+    const mobile = needsMobileImageSheet()
+    // iOS 画布大约 1600 万像素；手机上 2x 长图会直接失败且不弹下载框。
+    let pixelRatio = height * 2 > 16000 || mobile ? 1 : 2
+    if (width * height * pixelRatio * pixelRatio > 16_000_000) pixelRatio = 1
     const lib = await loadLib(win, doc)
     const dataUrl = await withTimeout(
       lib.toJpeg(doc.body, {
@@ -237,7 +285,7 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
         backgroundColor: '#f4efe6',
         width,
         height,
-        pixelRatio: height * 2 > 16000 ? 1 : 2,
+        pixelRatio,
         cacheBust: false,
         skipFonts: true,
         filter: skipCapture,
@@ -256,14 +304,68 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
       '导出超时：页面太长或图片未加载完，请等预览出图后再试',
     )
     if (!dataUrl || dataUrl.length < 800) throw new Error('导出结果是空的，请先生成行程再试')
-    downloadDataUrl(dataUrl, `${safeFilename(pageTitle(html))}.jpg`)
+    return {
+      blob: jpegBlob(dataUrl),
+      filename: `${safeFilename(pageTitle(html))}.jpg`,
+    }
   } finally {
     restore()
     iframe.remove()
   }
 }
 
-export async function publishShare(html: string, token: string) {
+export type ShareCard = {
+  url: string
+  title: string
+  description: string
+  image: string
+}
+
+async function fetchShareImage(src: string, title: string) {
+  try {
+    const res = await fetch(src)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    if (!blob.type.startsWith('image/') || blob.size < 800) return null
+    const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg'
+    const name = (title || '行程').replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 40) || '行程'
+    return new File([blob], `${name}.${ext}`, { type: blob.type })
+  } catch {
+    return null
+  }
+}
+
+/** 发给好友：能带图就带第一张，文字里留摘要和链接。平台不收图时退回带摘要的链接。 */
+export async function shareTripLink(card: ShareCard): Promise<'shared' | 'aborted' | 'unavailable'> {
+  if (typeof navigator.share !== 'function') return 'unavailable'
+  const title = card.title || '行程'
+  const description = card.description && card.description !== title ? card.description : ''
+  const file = card.image ? await fetchShareImage(card.image, title) : null
+  if (file) {
+    const payload: ShareData = {
+      files: [file],
+      title,
+      text: [description || title, card.url].filter(Boolean).join('\n'),
+    }
+    try {
+      if (typeof navigator.canShare !== 'function' || navigator.canShare(payload)) {
+        await navigator.share(payload)
+        return 'shared'
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
+    }
+  }
+  try {
+    await navigator.share({ title, text: description, url: card.url })
+    return 'shared'
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
+    return 'unavailable'
+  }
+}
+
+export async function publishShare(html: string, token: string): Promise<ShareCard> {
   const res = await fetch('/api/share', {
     method: 'POST',
     headers: {
@@ -274,7 +376,12 @@ export async function publishShare(html: string, token: string) {
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok || !data.url) throw new Error(data.error || '链接生成失败')
-  return String(data.url)
+  return {
+    url: String(data.url),
+    title: String(data.title || ''),
+    description: String(data.description || ''),
+    image: String(data.image || ''),
+  }
 }
 
 export function shareReach(url: string) {

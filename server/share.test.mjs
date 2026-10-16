@@ -36,6 +36,20 @@ test('share page carries a WeChat card and a root base url', () => {
   assert.doesNotMatch(html, /jweixin/)
 })
 
+test('proxied https photo becomes the WeChat card image', () => {
+  const photo = `/travel-photo?u=${encodeURIComponent('https://img.example/kyoto.jpg')}`
+  const html = `<!DOCTYPE html><html><head><title>京都奈良</title></head><body>
+<p class="hero-sub">寺院、抹茶和樱花</p>
+<img src="${photo}" alt="清水寺">
+</body></html>`
+  const meta = extractShareMeta(html)
+  assert.equal(meta.description, '寺院、抹茶和樱花')
+  assert.equal(meta.image, photo)
+  const page = decorateShareHtml(html, { pageUrl: 'http://119.91.204.216/s/abc', origin: 'http://119.91.204.216' })
+  assert.match(page, /property="og:image" content="https:\/\/img\.example\/kyoto\.jpg"/)
+  assert.match(page, /property="og:description" content="寺院、抹茶和樱花"/)
+})
+
 test('loopback share links prefer this machine\'s network address', () => {
   const origin = requestOrigin({ headers: { host: '127.0.0.1:5177' } })
   const host = new URL(origin).hostname

@@ -13,7 +13,8 @@ export async function copyText(text: string, input?: HTMLInputElement | null): P
   }
 
   try {
-    if (input) {
+    // 输入框里可能只有网址，摘要更长时不能拿它的选区当复制结果
+    if (input && input.value === value) {
       input.focus()
       input.select()
       input.setSelectionRange(0, value.length)
