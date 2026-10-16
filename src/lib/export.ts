@@ -1,3 +1,4 @@
+import { exportPhotoUrl } from './exportPhoto'
 import { downloadText, pageTitle, repairMobileChecklist, safeFilename } from './html'
 
 export type ExportDevice = 'phone' | 'desktop'
@@ -169,41 +170,50 @@ async function withTimeout<T>(work: Promise<T>, ms: number, label: string) {
 
 const IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
 
-function waitOne(img: HTMLImageElement, ms: number) {
-  if (img.complete && img.naturalWidth) return Promise.resolve(true)
-  return new Promise<boolean>((resolve) => {
-    const done = (ok: boolean) => resolve(ok)
-    img.addEventListener('load', () => done(true), { once: true })
-    img.addEventListener('error', () => done(false), { once: true })
-    window.setTimeout(() => done(Boolean(img.naturalWidth)), ms)
+function readBlob(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error || new Error('read'))
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.readAsDataURL(blob)
   })
 }
 
-function drawJpeg(doc: Document, img: HTMLImageElement, maxEdge: number) {
-  const edge = Math.max(img.naturalWidth, img.naturalHeight)
-  const scale = edge > maxEdge ? maxEdge / edge : 1
-  const w = Math.max(1, Math.round(img.naturalWidth * scale))
-  const h = Math.max(1, Math.round(img.naturalHeight * scale))
-  const canvas = doc.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
-  ctx.drawImage(img, 0, 0, w, h)
-  return canvas.toDataURL('image/jpeg', 0.72)
+function loadDataImage(data: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('image'))
+    img.src = data
+  })
 }
 
-async function rasterUrl(doc: Document, url: string, maxEdge: number, ms: number) {
-  if (!url || url.startsWith('data:')) return url
-  const img = doc.createElement('img')
-  img.crossOrigin = 'anonymous'
-  const ready = waitOne(img, ms)
-  img.src = url
-  if (!await ready || !img.naturalWidth) return ''
+/** 在父页面把图片取成 JPEG。不从导出 iframe 里的 img 画布取值，避免跨域污染后整张被换成空白。 */
+async function inlineImageUrl(url: string, maxEdge: number) {
+  const abs = exportPhotoUrl(url, window.location.href)
+  if (!abs) return ''
+  if (abs.startsWith('data:')) return abs
+  const res = await fetch(abs)
+  if (!res.ok) return ''
+  const blob = await res.blob()
+  if (blob.size < 32 || !blob.type.startsWith('image/')) return ''
+  const data = await readBlob(blob)
   try {
-    return drawJpeg(doc, img, maxEdge)
+    const img = await loadDataImage(data)
+    const edge = Math.max(img.naturalWidth, img.naturalHeight)
+    if (!edge) return data
+    const scale = edge > maxEdge ? maxEdge / edge : 1
+    const w = Math.max(1, Math.round(img.naturalWidth * scale))
+    const h = Math.max(1, Math.round(img.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return data
+    ctx.drawImage(img, 0, 0, w, h)
+    return canvas.toDataURL('image/jpeg', 0.72)
   } catch {
-    return ''
+    return data
   }
 }
 
@@ -211,18 +221,11 @@ async function rasterUrl(doc: Document, url: string, maxEdge: number, ms: number
 async function shrinkExportMedia(doc: Document, maxEdge: number) {
   const images = Array.from(doc.images || [])
   await Promise.all(images.map(async (img) => {
-    const ok = await waitOne(img, 1800)
+    img.loading = 'eager'
     img.removeAttribute('srcset')
-    if (!ok || !img.naturalWidth) {
-      img.src = IMAGE_PLACEHOLDER
-      return
-    }
-    try {
-      const data = drawJpeg(doc, img, maxEdge)
-      if (data) img.src = data
-    } catch {
-      img.src = IMAGE_PLACEHOLDER
-    }
+    const raw = img.getAttribute('src') || ''
+    const data = await inlineImageUrl(raw, maxEdge).catch(() => '')
+    if (data) img.src = data
   }))
 
   const hero = doc.querySelector<HTMLElement>('.hero')
@@ -233,8 +236,8 @@ async function shrinkExportMedia(doc: Document, maxEdge: number) {
   let next = bg
   const urls = [...bg.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]).filter((u) => u && !u.startsWith('data:'))
   for (const url of urls) {
-    const data = await rasterUrl(doc, url, Math.max(maxEdge, 960), 2500)
-    next = data ? next.split(url).join(data) : next.replace(/url\((['"]?).*?\1\)/, 'none')
+    const data = await inlineImageUrl(url, Math.max(maxEdge, 960)).catch(() => '')
+    if (data) next = next.split(url).join(data)
   }
   hero.style.backgroundImage = next
 }
@@ -290,7 +293,35 @@ function lockPreview(iframe: HTMLIFrameElement, doc: Document, width: number) {
       overflow-x: hidden !important;
     }
     #map, .map-section, .leaflet-container, .hero-petals, .carousel-dots { display: none !important; }
-    .carousel-track { transform: none !important; transition: none !important; }
+    .carousel-track { transform: none !important; transition: none !important; height: 200px !important; }
+    /* 出图引擎不认 aspect-ratio。绝对定位的图会跟着父级高度变成 0，每日实景就消失。 */
+    .hero { min-height: 280px !important; background-size: cover !important; background-position: center !important; }
+    .slot-img-wrap,
+    .hotel-option .photo-carousel,
+    .slot-img-wrap .photo-carousel {
+      position: relative !important;
+      display: block !important;
+      height: 200px !important;
+      min-height: 200px !important;
+      aspect-ratio: auto !important;
+      inset: auto !important;
+      overflow: hidden !important;
+    }
+    .slot-img-wrap > img,
+    .hotel-thumb,
+    .carousel-slide,
+    .carousel-slide img,
+    .dining-photos img {
+      position: relative !important;
+      inset: auto !important;
+      display: block !important;
+      width: 100% !important;
+      height: 200px !important;
+      min-height: 200px !important;
+      object-fit: cover !important;
+    }
+    .dining-photos { display: block !important; overflow: visible !important; }
+    .dining-photos img { width: 100% !important; height: 160px !important; min-height: 160px !important; margin: 8px 0 !important; }
   `
   doc.head.appendChild(style)
   const tracks = Array.from(doc.querySelectorAll<HTMLElement>('.carousel-track'))
@@ -343,6 +374,8 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
         canvasHeight: fitted.canvasHeight,
         pixelRatio: 1,
         cacheBust: false,
+        // 每日图的差别只在 ?u= 上。默认缓存会丢掉查询参数，整页行程图变成同一张或空白。
+        includeQueryParams: true,
         skipFonts: true,
         filter: skipCapture,
         style: {

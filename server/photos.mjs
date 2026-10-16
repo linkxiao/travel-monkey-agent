@@ -1040,6 +1040,7 @@ export async function handlePhotoProxy(req, res) {
     const img = binCache.get(src)
     res.setHeader('Content-Type', img.type)
     res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.setHeader('Access-Control-Allow-Origin', '*')
     res.end(img.buf)
   } catch {
     res.statusCode = 404
