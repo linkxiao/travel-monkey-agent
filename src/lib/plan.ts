@@ -19,7 +19,7 @@ function stripMealPrefix(value: string) {
   return String(value || '').replace(/^(早|午|晚)[餐饭·・.\s]*/u, '').trim()
 }
 
-// 用户第一句话 → 「目的地 + 天数 + 主题」短标题，例：京都、奈良5天4晚、两人，偏寺庙、樱花 → 京都奈良 5 日 · 寺庙与樱花
+// 用户第一句话 → 「目的地 + 天数 + 主题」短标题，例：京都、奈良5天4晚、两人，偏寺院、樱花 → 京都奈良 5 日 · 寺院与樱花
 export function askTitle(ask: string, dayCount: number) {
   const text = String(ask || '').trim()
   if (!text) return ''

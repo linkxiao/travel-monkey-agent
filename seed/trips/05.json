@@ -1,0 +1,1206 @@
+{
+  "title": "京都奈良 5日•寺院、开发和樱花",
+  "startDate": "2026-10-16",
+  "persona": "stay",
+  "disclaimer": "本行程按已确认大纲生成，时间与价格为参考，出发前请自行核实，不能代订。",
+  "days": [
+    {
+      "date": "2026-10-16",
+      "theme": "（抵达日，具体日期待定）：关西机场→京都站→四条乌丸町屋放行李",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "（抵达日，具体日期待定）：关西机场→京都站→四条乌丸町屋放行李",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "锦市场",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": "",
+          "cuttable": true,
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1446036931%2C1328648165%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D666",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1446036931%2C1328648165%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D666"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%EF%BC%88%E6%8A%B5%E8%BE%BE%E6%97%A5%EF%BC%8C%E5%85%B7%E4%BD%93%E6%97%A5%E6%9C%9F%E5%BE%85%E5%AE%9A%EF%BC%89%EF%BC%9A%E5%85%B3%E8%A5%BF%E6%9C%BA%E5%9C%BA%E2%86%92%E4%BA%AC%E9%83%BD%E7%AB%99%E2%86%92%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B%E6%94%BE%E8%A1%8C%E6%9D%8E&to=135.7681,35.0116,%E9%94%A6%E5%B8%82%E5%9C%BA&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "新京極商店街",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2Fc%2Fce%2FNishiki_Ichiba_by_matsuyuki.jpg%3Futm_source%3Dzh.wikipedia.org%26utm_campaign%3Dapi%26utm_content%3Dthumbnail_unscaled",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2Fc%2Fce%2FNishiki_Ichiba_by_matsuyuki.jpg%3Futm_source%3Dzh.wikipedia.org%26utm_campaign%3Dapi%26utm_content%3Dthumbnail_unscaled"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E9%94%A6%E5%B8%82%E5%9C%BA&to=135.7681,35.0116,%E6%96%B0%E4%BA%AC%E6%A5%B5%E5%95%86%E5%BA%97%E8%A1%97&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "茶歇·鸭川边咖啡",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%96%B0%E4%BA%AC%E6%A5%B5%E5%95%86%E5%BA%97%E8%A1%97&to=135.7681,35.0116,%E8%8C%B6%E6%AD%87%C2%B7%E9%B8%AD%E5%B7%9D%E8%BE%B9%E5%92%96%E5%95%A1&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住 四条乌丸町屋",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E8%8C%B6%E6%AD%87%C2%B7%E9%B8%AD%E5%B7%9D%E8%BE%B9%E5%92%96%E5%95%A1&to=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚·京極スタンド（新京極，立饮居酒屋，参考）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&to=135.7681,35.0116,%E6%99%9A%C2%B7%E4%BA%AC%E6%A5%B5%E3%82%B9%E3%82%BF%E3%83%B3%E3%83%89%EF%BC%88%E6%96%B0%E4%BA%AC%E6%A5%B5%EF%BC%8C%E7%AB%8B%E9%A5%AE%E5%B1%85%E9%85%92%E5%B1%8B%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "早·机上",
+          "hours": "07:30–09:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+        },
+        {
+          "meal": "午餐",
+          "place": "午·進々堂 京都站前店（面包咖啡，参考）",
+          "hours": "11:30–13:00",
+          "note": "",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "晚·京極スタンド（新京極，立饮居酒屋，参考）",
+          "hours": "18:00–20:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "轻",
+          "walk": "少走路，以车或室内为主",
+          "why": "两到三个点，按馆点节奏走即可。"
+        },
+        "rain": {
+          "cut": "鸭川散步可砍，锦市场与新京極有顶棚",
+          "keep": "茶歇·鸭川边咖啡",
+          "instead": "雨天按馆点走，少在露天停留。"
+        },
+        "park": {
+          "leave": "关西机场→京都站 JR HARUKA，京都站打车约10分钟到町屋门口上下车，无自驾。",
+          "then": "车停稳再进点，景区内少挪车。",
+          "pickup": "原停车场取车；无自驾则改为公交/出租上下车点"
+        }
+      },
+      "weekday": "周五",
+      "brief": "（抵达日，具体日期待定）：关西机场→京…"
+    },
+    {
+      "date": "2026-10-17",
+      "theme": "东山：清水寺（樱花）",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "东山：清水寺（樱花）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "建仁寺",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": "",
+          "cuttable": true,
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2007259067%2C1488303335%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2007259067%2C1488303335%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%B8%9C%E5%B1%B1%EF%BC%9A%E6%B8%85%E6%B0%B4%E5%AF%BA%EF%BC%88%E6%A8%B1%E8%8A%B1%EF%BC%89&to=135.7681,35.0116,%E5%BB%BA%E4%BB%81%E5%AF%BA&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "午休·二年坂茶歇",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D224476686%2C1162511971%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D224476686%2C1162511971%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%BB%BA%E4%BB%81%E5%AF%BA&to=135.7681,35.0116,%E5%8D%88%E4%BC%91%C2%B7%E4%BA%8C%E5%B9%B4%E5%9D%82%E8%8C%B6%E6%AD%87&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "住 四条乌丸町屋",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%8D%88%E4%BC%91%C2%B7%E4%BA%8C%E5%B9%B4%E5%9D%82%E8%8C%B6%E6%AD%87&to=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "早·イノダコーヒ 本店（三条堺町，参考）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&to=135.7681,35.0116,%E6%97%A9%C2%B7%E3%82%A4%E3%83%8E%E3%83%80%E3%82%B3%E3%83%BC%E3%83%92%20%E6%9C%AC%E5%BA%97%EF%BC%88%E4%B8%89%E6%9D%A1%E5%A0%BA%E7%94%BA%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚·串くら 本店（御所南，鸡肉串烧，参考）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%97%A9%C2%B7%E3%82%A4%E3%83%8E%E3%83%80%E3%82%B3%E3%83%BC%E3%83%92%20%E6%9C%AC%E5%BA%97%EF%BC%88%E4%B8%89%E6%9D%A1%E5%A0%BA%E7%94%BA%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&to=135.7681,35.0116,%E6%99%9A%C2%B7%E4%B8%B2%E3%81%8F%E3%82%89%20%E6%9C%AC%E5%BA%97%EF%BC%88%E5%BE%A1%E6%89%80%E5%8D%97%EF%BC%8C%E9%B8%A1%E8%82%89%E4%B8%B2%E7%83%A7%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "午·おめん 祇園店（乌冬，软食，参考）",
+          "hours": "07:30–09:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "晚·串くら 本店（御所南，鸡肉串烧，参考）",
+          "hours": "11:30–13:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        },
+        {
+          "meal": "晚餐",
+          "place": "晚·串くら 本店（御所南，鸡肉串烧，参考）",
+          "hours": "18:00–20:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "中",
+          "walk": "少走路，以车或室内为主",
+          "why": "两到三个点，按馆点节奏走即可。"
+        },
+        "rain": {
+          "cut": "二年坂三年坂露天坡道可砍，改建仁寺+茶歇",
+          "keep": "建仁寺、午休·二年坂茶歇",
+          "instead": "雨天按馆点走，少在露天停留。"
+        },
+        "park": {
+          "leave": "市巴士206至东山一带，八坂通下车步行，无自驾。",
+          "then": "车停稳再进点，景区内少挪车。",
+          "pickup": "原停车场取车；无自驾则改为公交/出租上下车点"
+        }
+      },
+      "weekday": "周六",
+      "brief": "东山：清水寺（樱花）"
+    },
+    {
+      "date": "2026-10-18",
+      "theme": "岚山：天龙寺",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "岚山：天龙寺",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "渡月桥·竹林小径",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3327606664%2C970432309%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3327606664%2C970432309%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%B2%9A%E5%B1%B1%EF%BC%9A%E5%A4%A9%E9%BE%99%E5%AF%BA&to=135.7681,35.0116,%E6%B8%A1%E6%9C%88%E6%A1%A5%C2%B7%E7%AB%B9%E6%9E%97%E5%B0%8F%E5%BE%84&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "午休·岚山茶屋坐坐",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%B8%A1%E6%9C%88%E6%A1%A5%C2%B7%E7%AB%B9%E6%9E%97%E5%B0%8F%E5%BE%84&to=135.7681,35.0116,%E5%8D%88%E4%BC%91%C2%B7%E5%B2%9A%E5%B1%B1%E8%8C%B6%E5%B1%8B%E5%9D%90%E5%9D%90&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "住 四条乌丸町屋",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%8D%88%E4%BC%91%C2%B7%E5%B2%9A%E5%B1%B1%E8%8C%B6%E5%B1%8B%E5%9D%90%E5%9D%90&to=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "早·町屋简餐",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BD%8F%20%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&to=135.7681,35.0116,%E6%97%A9%C2%B7%E7%94%BA%E5%B1%8B%E7%AE%80%E9%A4%90&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚·先斗町一带居酒屋（アカイタナカ，参考，请核实）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%97%A9%C2%B7%E7%94%BA%E5%B1%8B%E7%AE%80%E9%A4%90&to=135.7681,35.0116,%E6%99%9A%C2%B7%E5%85%88%E6%96%97%E7%94%BA%E4%B8%80%E5%B8%A6%E5%B1%85%E9%85%92%E5%B1%8B%EF%BC%88%E3%82%A2%E3%82%AB%E3%82%A4%E3%82%BF%E3%83%8A%E3%82%AB%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%8C%E8%AF%B7%E6%A0%B8%E5%AE%9E%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "午·嵐山よしむら（手打荞麦，参考）",
+          "hours": "07:30–09:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "晚·先斗町一带居酒屋（アカイタナカ，参考，请核实）",
+          "hours": "11:30–13:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        },
+        {
+          "meal": "晚餐",
+          "place": "晚·先斗町一带居酒屋（アカイタナカ，参考，请核实）",
+          "hours": "18:00–20:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "中",
+          "walk": "少走路，以车或室内为主",
+          "why": "两到三个点，按馆点节奏走即可。"
+        },
+        "rain": {
+          "cut": "竹林小径、渡月桥露天，雨天改天龙寺庭园+室内茶屋",
+          "keep": "午休·岚山茶屋坐坐",
+          "instead": "雨天按馆点走，少在露天停留。"
+        },
+        "park": {
+          "leave": "JR嵯峨野线 京都→嵯峨嵐山（约15分），无自驾。",
+          "then": "车停稳再进点，景区内少挪车。",
+          "pickup": "原停车场取车；无自驾则改为公交/出租上下车点"
+        }
+      },
+      "weekday": "周日",
+      "brief": "岚山：天龙寺"
+    },
+    {
+      "date": "2026-10-19",
+      "theme": "奈良一日：东大寺",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "奈良一日：东大寺",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "春日大社",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": "",
+          "cuttable": true,
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D419210390%2C1363297810%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D772%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D419210390%2C1363297810%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D772%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%A5%88%E8%89%AF%E4%B8%80%E6%97%A5%EF%BC%9A%E4%B8%9C%E5%A4%A7%E5%AF%BA&to=135.7681,35.0116,%E6%98%A5%E6%97%A5%E5%A4%A7%E7%A4%BE&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "奈良公园散步（鹿与樱花）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "cuttable": true,
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%98%A5%E6%97%A5%E5%A4%A7%E7%A4%BE&to=135.7681,35.0116,%E5%A5%88%E8%89%AF%E5%85%AC%E5%9B%AD%E6%95%A3%E6%AD%A5%EF%BC%88%E9%B9%BF%E4%B8%8E%E6%A8%B1%E8%8A%B1%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "住 京都四条乌丸町屋",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3810973569%2C2540986341%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3810973569%2C2540986341%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E5%A5%88%E8%89%AF%E5%85%AC%E5%9B%AD%E6%95%A3%E6%AD%A5%EF%BC%88%E9%B9%BF%E4%B8%8E%E6%A8%B1%E8%8A%B1%EF%BC%89&to=135.7681,35.0116,%E4%BD%8F%20%E4%BA%AC%E9%83%BD%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "早·WEEKENDERS COFFEE（富小路，参考）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BD%8F%20%E4%BA%AC%E9%83%BD%E5%9B%9B%E6%9D%A1%E4%B9%8C%E4%B8%B8%E7%94%BA%E5%B1%8B&to=135.7681,35.0116,%E6%97%A9%C2%B7WEEKENDERS%20COFFEE%EF%BC%88%E5%AF%8C%E5%B0%8F%E8%B7%AF%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚·粟 ならまち店（奈良町おばんざい，参考）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E6%97%A9%C2%B7WEEKENDERS%20COFFEE%EF%BC%88%E5%AF%8C%E5%B0%8F%E8%B7%AF%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&to=135.7681,35.0116,%E6%99%9A%C2%B7%E7%B2%9F%20%E3%81%AA%E3%82%89%E3%81%BE%E3%81%A1%E5%BA%97%EF%BC%88%E5%A5%88%E8%89%AF%E7%94%BA%E3%81%8A%E3%81%B0%E3%82%93%E3%81%96%E3%81%84%EF%BC%8C%E5%8F%82%E8%80%83%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "午·春日荷茶屋（万叶粥，好消化，参考）",
+          "hours": "07:30–09:00",
+          "note": "",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "晚·粟 ならまち店（奈良町おばんざい，参考）",
+          "hours": "11:30–13:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        },
+        {
+          "meal": "晚餐",
+          "place": "晚·粟 ならまち店（奈良町おばんざい，参考）",
+          "hours": "18:00–20:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "中",
+          "walk": "景间多段步行，少连续坐车",
+          "why": "两到三个点，按馆点节奏走即可。"
+        },
+        "rain": {
+          "cut": "奈良公园露天鹿区可砍，改东大寺大佛殿+春日大社回廊",
+          "keep": "室内馆、寺祠、茶歇、就近午餐",
+          "instead": "雨天按馆点走，少在露天停留。"
+        },
+        "park": {
+          "leave": "近铁京都→近铁奈良（急行约45分），奈良站前巴士到东大寺，无自驾。",
+          "then": "车停稳再进点，景区内少挪车。",
+          "pickup": "原停车场取车；无自驾则改为公交/出租上下车点"
+        }
+      },
+      "weekday": "周一",
+      "brief": "奈良一日：东大寺"
+    },
+    {
+      "date": "2026-10-20",
+      "theme": "（返程日）：平野神社（樱花）",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "（返程日）：平野神社（樱花）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "京都国立博物馆（人文）",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "morning",
+          "review": "",
+          "ticketPrice": "",
+          "cuttable": true,
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1323926161%2C925243937%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1323926161%2C925243937%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%EF%BC%88%E8%BF%94%E7%A8%8B%E6%97%A5%EF%BC%89%EF%BC%9A%E5%B9%B3%E9%87%8E%E7%A5%9E%E7%A4%BE%EF%BC%88%E6%A8%B1%E8%8A%B1%EF%BC%89&to=135.7681,35.0116,%E4%BA%AC%E9%83%BD%E5%9B%BD%E7%AB%8B%E5%8D%9A%E7%89%A9%E9%A6%86%EF%BC%88%E4%BA%BA%E6%96%87%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "茶歇·回町屋取行李",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BA%AC%E9%83%BD%E5%9B%BD%E7%AB%8B%E5%8D%9A%E7%89%A9%E9%A6%86%EF%BC%88%E4%BA%BA%E6%96%87%EF%BC%89&to=135.7681,35.0116,%E8%8C%B6%E6%AD%87%C2%B7%E5%9B%9E%E7%94%BA%E5%B1%8B%E5%8F%96%E8%A1%8C%E6%9D%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "京都站→关西机场",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "noon",
+          "review": "",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E8%8C%B6%E6%AD%87%C2%B7%E5%9B%9E%E7%94%BA%E5%B1%8B%E5%8F%96%E8%A1%8C%E6%9D%8E&to=135.7681,35.0116,%E4%BA%AC%E9%83%BD%E7%AB%99%E2%86%92%E5%85%B3%E8%A5%BF%E6%9C%BA%E5%9C%BA&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住 返程",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1273621733%2C2692929383%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BA%AC%E9%83%BD%E7%AB%99%E2%86%92%E5%85%B3%E8%A5%BF%E6%9C%BA%E5%9C%BA&to=135.7681,35.0116,%E4%BD%8F%20%E8%BF%94%E7%A8%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚·机上",
+          "lat": 35.0116,
+          "lng": 135.7681,
+          "time": "",
+          "period": "evening",
+          "review": "",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D1548116895%2C2293143697%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D659"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=135.7681,35.0116,%E4%BD%8F%20%E8%BF%94%E7%A8%8B&to=135.7681,35.0116,%E6%99%9A%C2%B7%E6%9C%BA%E4%B8%8A&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "早·町屋简餐",
+          "hours": "07:30–09:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D3275063957%2C3260231946%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+        },
+        {
+          "meal": "午餐",
+          "place": "午·京都站 伊勢丹餐厅层（参考）",
+          "hours": "11:30–13:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "晚·机上",
+          "hours": "18:00–20:00",
+          "note": "",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "时令家常（参考）",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2614058044%2C1656288327%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D651"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "轻",
+          "walk": "少走路，以车或室内为主",
+          "why": "两到三个点，按馆点节奏走即可。"
+        },
+        "rain": {
+          "cut": "平野神社为露天樱点，雨天直接换京都国立博物馆",
+          "keep": "京都国立博物馆（人文）、茶歇·回町屋取行李",
+          "instead": "雨天按馆点走，少在露天停留。"
+        },
+        "park": {
+          "leave": "市巴士至京都站，JR HARUKA 至关西机场，町屋门口上下车，无自驾。",
+          "then": "车停稳再进点，景区内少挪车。",
+          "pickup": "原停车场取车；无自驾则改为公交/出租上下车点"
+        }
+      },
+      "weekday": "周二",
+      "brief": "（返程日）：平野神社（樱花）"
+    }
+  ],
+  "dataSources": [
+    {
+      "name": "高德地图",
+      "scope": "境外点不套国内店，已跳过",
+      "realtime": false
+    },
+    {
+      "name": "联网搜索",
+      "scope": "航班/酒店/时令公开信息（含飞猪等页面摘要，参考，不能代订）",
+      "realtime": true
+    },
+    {
+      "name": "本地路网估算",
+      "scope": "无地图 Key：按坐标直线距离估算步行/公交/打车，非实测路网",
+      "realtime": false
+    }
+  ],
+  "tips": [
+    "按旅居节奏：半天一个点，三餐与午休优先，少搬少走。",
+    "热门餐厅避开午晚高峰。",
+    "门票与开放时间出发前在官方渠道核实。",
+    "坐标为参考，导航以实地路牌为准。",
+    "旅居：优先电梯/一层/坐便，出发前电话核实。"
+  ],
+  "hotelAreas": [
+    {
+      "area": "住 四条乌丸町屋",
+      "reason": "按当日行程就近入住。（订房时确认电梯/低楼层）。",
+      "options": [
+        {
+          "tier": "中档",
+          "name": "住 四条乌丸町屋",
+          "priceRange": "参考价，出发前核实",
+          "note": "",
+          "access": {
+            "note": "适老：电梯/低楼层/坐便（订房时确认）",
+            "status": "待核实"
+          }
+        }
+      ]
+    },
+    {
+      "area": "早·町屋简餐",
+      "reason": "按当日行程就近入住。连住3晚，少换房。（订房时确认电梯/低楼层）。",
+      "options": [
+        {
+          "tier": "中档",
+          "name": "早·町屋简餐",
+          "priceRange": "参考价，出发前核实",
+          "note": "",
+          "access": {
+            "note": "适老：电梯/低楼层/坐便（订房时确认）",
+            "status": "待核实"
+          }
+        }
+      ]
+    }
+  ],
+  "flights": {
+    "booked": [],
+    "candidates": []
+  },
+  "preTrip": {
+    "weather": {
+      "summary": "出发前关注当地天气。",
+      "typhoon": "以官方预警为准。"
+    },
+    "transport": "市内以地铁 / 打车为主；热门时段预留排队与堵车时间。",
+    "packing": "舒适鞋 + 外套，按季节增减。",
+    "payment": "微信 / 支付宝；小店备少量现金。",
+    "apps": [
+      "高德地图",
+      "航旅纵横"
+    ],
+    "ticketTip": "热门票提前在官方渠道预约。"
+  },
+  "ui": {
+    "overviewLead": "京都奈良 5日•寺院、开发和樱花：按日看线路、景点、住宿与餐饮。",
+    "heroSub": "本行程按已确认大纲生成，时间与价格为参考，出发前请自行核实，不能代订。",
+    "themeId": "matcha",
+    "themeName": "山房"
+  },
+  "personaLabel": "旅居",
+  "reminders": [
+    {
+      "item": "确认往返交通与住宿",
+      "leadDays": 14
+    },
+    {
+      "item": "热门景点预约门票",
+      "leadDays": 7
+    },
+    {
+      "item": "出发前看天气与交通管制",
+      "leadDays": 3
+    },
+    {
+      "item": "下载离线地图并保存订单截图",
+      "leadDays": 3
+    }
+  ],
+  "budget": {
+    "nights": 5,
+    "note": "按整程住宿晚数×三档中间价估算，仅作预算信封参考。",
+    "tiers": [
+      {
+        "tier": "经济",
+        "total": "约 ¥1250（5晚参考）"
+      },
+      {
+        "tier": "中档",
+        "total": "约 ¥2750（5晚参考）"
+      },
+      {
+        "tier": "高端",
+        "total": "约 ¥6000（5晚参考）"
+      }
+    ]
+  },
+  "overview": [
+    {
+      "day": 1,
+      "date": "2026-10-16",
+      "route": "（抵达日，具体日期待定）：关西机场→京都站→四条乌丸町屋放行李",
+      "spots": "锦市场 / 新京極商店街 / 茶歇·鸭川边咖啡",
+      "stay": "住 四条乌丸町屋",
+      "food": "晚·京極スタンド（新京極，立饮居酒屋，参考）",
+      "distance": "",
+      "load": "轻",
+      "rain": "鸭川散步可砍，锦市场与新京極有顶棚",
+      "park": "关西机场→京都站 JR HARUKA，京都站打车约10分钟到町屋门口上下车，无自驾。"
+    },
+    {
+      "day": 2,
+      "date": "2026-10-17",
+      "route": "东山：清水寺（樱花）",
+      "spots": "建仁寺 / 午休·二年坂茶歇 / 住 四条乌丸町屋",
+      "stay": "早·イノダコーヒ 本店（三条堺町，参考）",
+      "food": "晚·串くら 本店（御所南，鸡肉串烧，参考）",
+      "distance": "",
+      "load": "中",
+      "rain": "二年坂三年坂露天坡道可砍，改建仁寺+茶歇",
+      "park": "市巴士206至东山一带，八坂通下车步行，无自驾。"
+    },
+    {
+      "day": 3,
+      "date": "2026-10-18",
+      "route": "岚山：天龙寺",
+      "spots": "渡月桥·竹林小径 / 午休·岚山茶屋坐坐 / 住 四条乌丸町屋",
+      "stay": "早·町屋简餐",
+      "food": "晚·先斗町一带居酒屋（アカイタナカ，参考，请核实）",
+      "distance": "",
+      "load": "中",
+      "rain": "竹林小径、渡月桥露天，雨天改天龙寺庭园+室内茶屋",
+      "park": "JR嵯峨野线 京都→嵯峨嵐山（约15分），无自驾。"
+    },
+    {
+      "day": 4,
+      "date": "2026-10-19",
+      "route": "奈良一日：东大寺",
+      "spots": "春日大社 / 奈良公园散步（鹿与樱花） / 住 京都四条乌丸町屋",
+      "stay": "早·WEEKENDERS COFFEE（富小路，参考）",
+      "food": "晚·粟 ならまち店（奈良町おばんざい，参考）",
+      "distance": "",
+      "load": "中",
+      "rain": "奈良公园露天鹿区可砍，改东大寺大佛殿+春日大社回廊",
+      "park": "近铁京都→近铁奈良（急行约45分），奈良站前巴士到东大寺，无自驾。"
+    },
+    {
+      "day": 5,
+      "date": "2026-10-20",
+      "route": "（返程日）：平野神社（樱花）",
+      "spots": "京都国立博物馆（人文） / 茶歇·回町屋取行李 / 京都站→关西机场",
+      "stay": "住 返程",
+      "food": "晚·机上",
+      "distance": "",
+      "load": "轻",
+      "rain": "平野神社为露天樱点，雨天直接换京都国立博物馆",
+      "park": "市巴士至京都站，JR HARUKA 至关西机场，町屋门口上下车，无自驾。"
+    }
+  ]
+}

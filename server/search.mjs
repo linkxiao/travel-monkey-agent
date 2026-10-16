@@ -89,6 +89,75 @@ async function searchOnce(query, provider, searchKey) {
   return { ok: true, results: list, provider: 'bocha' }
 }
 
+function stepId(step) {
+  return `${step.provider}\0${step.key}`
+}
+
+function isCredentialFailure(reason) {
+  const s = String(reason || '')
+  if (/invalid api key|unauthorized|authentication/i.test(s)) return true
+  if (/密钥|api\s*key/i.test(s) && /无效|错误|不正确|失效|invalid/i.test(s)) return true
+  return /^http-40[13]$/.test(s)
+}
+
+// 同一进程里，无效密钥只探测一次。并发的航班/酒店/时令三路共用这一次结果。
+const authState = new Map()
+
+export function resetSearchAuth() {
+  authState.clear()
+}
+
+function beginProbe(id) {
+  let release = () => {}
+  const gate = new Promise((resolve) => { release = resolve })
+  const state = { status: 'probing', gate, release, reason: '' }
+  authState.set(id, state)
+  return state
+}
+
+async function callProvider(query, step, gateAuth) {
+  const id = stepId(step)
+  let state = authState.get(id)
+  if (state?.status === 'dead') {
+    return { ok: false, results: [], reason: state.reason, skipped: true }
+  }
+  if (gateAuth && state?.status === 'probing') {
+    await state.gate
+    if (state.status === 'dead') {
+      return { ok: false, results: [], reason: state.reason, skipped: true }
+    }
+  } else if (gateAuth && !state) {
+    state = beginProbe(id)
+    try {
+      const out = await searchOnce(query, step.provider, step.key)
+      if (!out.ok && isCredentialFailure(out.reason)) {
+        state.status = 'dead'
+        state.reason = out.reason || 'invalid-key'
+        out.retired = true
+      } else if (out.ok) {
+        state.status = 'ok'
+      } else {
+        state.status = 'open'
+      }
+      return out
+    } catch (err) {
+      state.status = 'open'
+      throw err
+    } finally {
+      state.release()
+    }
+  }
+
+  const out = await searchOnce(query, step.provider, step.key)
+  if (!out.ok && isCredentialFailure(out.reason)) {
+    authState.set(id, { status: 'dead', reason: out.reason || 'invalid-key', gate: Promise.resolve(), release() {} })
+    out.retired = true
+  } else if (out.ok) {
+    authState.set(id, { status: 'ok', reason: '', gate: Promise.resolve(), release() {} })
+  }
+  return out
+}
+
 /**
  * 先主源，失败再备用。opts:
  *   searchKey, searchProvider
@@ -115,14 +184,18 @@ export async function searchWeb(query, opts = {}) {
   for (let i = 0; i < chain.length; i += 1) {
     const step = chain[i]
     try {
-      const out = await searchOnce(query, step.provider, step.key)
+      const out = await callProvider(query, step, i === 0)
+      if (out.skipped) continue
       if (out.ok) {
         if (i > 0) {
           console.log(`[search] 主源失败，已用备用 ${step.provider}，命中 ${out.results.length} 条`)
         }
         return out.results
       }
-      console.log(`[search] ${step.provider} 失败：${out.reason || 'unknown'}${i < chain.length - 1 ? '，尝试备用' : ''}`)
+      const tail = out.retired
+        ? `，本进程后续跳过该密钥${i < chain.length - 1 ? '，尝试备用' : ''}`
+        : (i < chain.length - 1 ? '，尝试备用' : '')
+      console.log(`[search] ${step.provider} 失败：${out.reason || 'unknown'}${tail}`)
       lastEmpty = []
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

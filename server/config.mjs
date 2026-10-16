@@ -91,8 +91,23 @@ export function dataKeys(body = {}) {
 }
 
 export function dailyLimit() {
-  const n = Number(env('LLM_DAILY_LIMIT') || 10)
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 10
+  const n = Number(env('LLM_DAILY_LIMIT') || 5)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5
+}
+
+/** 不限服务端模型次数的邮箱白名单（逗号/空格分隔） */
+export function quotaWhitelist() {
+  return new Set(
+    env('QUOTA_WHITELIST')
+      .split(/[,;\s]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+export function isQuotaWhitelisted(email) {
+  const addr = String(email || '').trim().toLowerCase()
+  return Boolean(addr && quotaWhitelist().has(addr))
 }
 
 export function publicConfig() {

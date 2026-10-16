@@ -1,12 +1,16 @@
 import type { Trip } from './trip'
+import { authHeaders } from './http.ts'
 
 export async function renderTripPage(trip: Trip, opts?: {
   themeId?: string
   keepThemeId?: string
   fallback?: boolean
+  fast?: boolean
   skipPhotos?: boolean
   skipTransport?: boolean
   replacePhotos?: boolean
+  fillGaps?: boolean
+  photoMode?: 'fill_gaps' | 'replace'
   photoNames?: string[]
   photoKinds?: string[]
   photoHint?: string
@@ -18,20 +22,24 @@ export async function renderTripPage(trip: Trip, opts?: {
   searchProvider?: string
   searchFallbackKey?: string
   searchFallbackProvider?: string
+  authToken?: string
 }) {
   let res: Response
   try {
     res = await fetch('/api/render', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(opts?.authToken, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         trip,
         themeId: opts?.themeId,
         keepThemeId: opts?.keepThemeId,
         fallback: opts?.fallback,
+        fast: opts?.fast,
         skipPhotos: opts?.skipPhotos,
         skipTransport: opts?.skipTransport,
         replacePhotos: opts?.replacePhotos,
+        fillGaps: opts?.fillGaps,
+        photoMode: opts?.photoMode,
         photoNames: opts?.photoNames,
         photoKinds: opts?.photoKinds,
         photoHint: opts?.photoHint,

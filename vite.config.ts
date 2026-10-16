@@ -11,6 +11,7 @@ import { handleResearch } from './server/research.mjs'
 import { handleUpload } from './server/uploads.mjs'
 import { handleAuth } from './server/users.mjs'
 import { handleConfig } from './server/config.mjs'
+import { handleShareGet, handleSharePublish, matchShare } from './server/share.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const assetsRoot = path.join(__dirname, 'travel-assets')
@@ -77,11 +78,23 @@ function localAssets(): Plugin {
         }
         handleUpload(req, res)
       })
+      server.middlewares.use('/api/share', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        handleSharePublish(req, res)
+      })
       server.middlewares.use('/travel-photo', (req, res) => {
         handlePhotoProxy(req, res)
       })
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0] || ''
+        if (req.method === 'GET' && matchShare(url)) {
+          handleShareGet(req, res)
+          return
+        }
         if (url === '/export/html-to-image.js' && fs.existsSync(htmlToImage)) {
           res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
           fs.createReadStream(htmlToImage).pipe(res)
@@ -129,6 +142,9 @@ export default defineConfig({
   plugins: [react(), localAssets()],
   server: {
     port: 5177,
-    host: '127.0.0.1',
+    host: true,
+    watch: {
+      ignored: ['**/data/shares/**'],
+    },
   },
 })

@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { renderSVG } from 'uqr'
 import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
 import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type ServerConfig } from './lib/chat'
-import { copyHtml, exportH5, exportImage, sharePage } from './lib/export'
+import { exportH5, exportImage, publishShare, shareReach } from './lib/export'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
 import { fetchResearch, type ResearchBrief } from './lib/research'
@@ -10,13 +11,16 @@ import { detectPersona, PERSONAS, personaLabel } from './lib/persona'
 import { AccountDialog, type AuthInput, type AuthScreen, type AuthSuccess } from './AccountDialog'
 import { AlpineScene } from './AlpineScene'
 import { FieldSelect } from './FieldSelect'
+import { BrandLogo } from './BrandLogo'
 import { TOKEN_KEY, fetchSession, loginAccount, logoutAccount, registerAccount, requestAuthCode } from './lib/auth'
+import { repairMobileChecklist } from './lib/html'
 import { todayAdvice } from './lib/today'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
+import { answeredAskKeys, omitAnsweredAsks } from './lib/ask'
 import { buildChatMessages, buildFillMessages, buildPlanMessages, userPack } from './lib/context'
 import { buildRouteMessages, carryLine, isNewTask, localTurn, parseTurn, planPrefs, tripHead, tripNames, type PrefPlan, type Turn } from './lib/route'
 import { isEmptySession, listSessions, loadSession, newSessionId, removeSession, saveSession, sessionOwner, sessionPointerKey, sessionTitle, setSessionOwner, type SessionData, type SessionMeta } from './lib/session'
-import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, mentionedDay, photoOutcome, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
+import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, digestTrip, extractEnvelope, extractTrip, findUnseenInHtml, inferEditFrom, inferLocalEdit, isBoilerReply, isEditReceipt, isPhotoScopeClarify, mentionedDay, photoOutcome, resolvePhotoIntent, stripBoilerReply, stripEditClaim, wantsPageSync, wantsPhotos, wantsTripEdit, type Trip } from './lib/trip'
 
 const THEME_IDS = ['terracotta', 'matcha', 'ink', 'coast', 'rose', 'slate', 'sand', 'night']
 const THEME_ALIASES: Array<[string, RegExp]> = [
@@ -44,7 +48,7 @@ const OWN_KEY_HINT = /改用自己的(?:模型)?密钥|次已经用完|免费额
 const ERROR_BUBBLE = /^(出错了：|密钥没通过)/
 
 const EXAMPLES = [
-  '京都、奈良5天4晚、两人，偏寺庙、樱花、咖啡和人文古迹和，住町屋',
+  '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋',
   '深圳周边3天2晚、一家三口，偏亲子与海边，住较场尾',
   '甘南6天5晚、两人轻装，偏徒步、星空、人文、自然和美食，住县城方便出山',
 ]
@@ -86,10 +90,17 @@ export default function App() {
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [busy, setBusy] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [pageWait, setPageWait] = useState('')
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [device, setDevice] = useState<'phone' | 'desktop'>('phone')
+  const [mobileView, setMobileView] = useState<'chat' | 'preview'>('chat')
+  const [askWriting, setAskWriting] = useState<Record<number, boolean>>({})
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareBusy, setShareBusy] = useState(false)
+  const [shareError, setShareError] = useState('')
   const [skillLabel, setSkillLabel] = useState('')
   const [amapKey, setAmapKey] = useState(() => loadSetting('ct.amap', ''))
   const [tiandituKey, setTiandituKey] = useState(() => loadSetting('ct.tianditu', ''))
@@ -113,6 +124,7 @@ export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const loadingRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const runIdRef = useRef(0)
   const logRef = useRef<HTMLDivElement>(null)
   const researchRef = useRef<{ done?: boolean; query?: string; brief?: string; sources?: ResearchBrief['sources']; hotelsByTier?: ResearchBrief['hotelsByTier']; openHours?: ResearchBrief['openHours'] }>({})
   const authTokenRef = useRef(loadSetting(TOKEN_KEY, ''))
@@ -125,12 +137,18 @@ export default function App() {
   const [serverCfg, setServerCfg] = useState<ServerConfig>({ model: null, amap: false, tianditu: false, search: false, dailyLimit: 0 })
   const [ownKey, setOwnKey] = useState(() => loadSetting('ct.ownKey', '') === '1')
   const [quotaLeft, setQuotaLeft] = useState<number | null>(null)
+  const [quotaUnlimited, setQuotaUnlimited] = useState(false)
   const serverModel = Boolean(serverCfg.model) && !ownKey
   const [keyDialogOpen, setKeyDialogOpen] = useState(false)
 
   useEffect(() => {
     void fetchServerConfig().then(setServerCfg)
   }, [])
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('app-locked', Boolean(authUser))
+    return () => document.documentElement.classList.remove('app-locked')
+  }, [authUser])
 
   useEffect(() => {
     try { localStorage.setItem('ct.ownKey', ownKey ? '1' : '') } catch { /* ignore */ }
@@ -180,14 +198,32 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [keyDialogOpen])
 
+  useEffect(() => {
+    if (!keyDialogOpen && !shareOpen && !deleteConfirm) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setKeyDialogOpen(false)
+      setShareOpen(false)
+      setDeleteConfirm(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [keyDialogOpen, shareOpen, deleteConfirm])
+
   function refreshQuota() {
     if (!serverCfg.model) return
-    void fetchQuotaLeft(authTokenRef.current).then(setQuotaLeft)
+    void fetchQuotaLeft(authTokenRef.current).then((q) => {
+      setQuotaLeft(q.left)
+      setQuotaUnlimited(q.unlimited)
+    })
   }
 
   useEffect(() => {
     if (authUser) refreshQuota()
-    else setQuotaLeft(null)
+    else {
+      setQuotaLeft(null)
+      setQuotaUnlimited(false)
+    }
   }, [authUser, serverCfg.model])
 
   function chatAuth() {
@@ -207,13 +243,27 @@ export default function App() {
   const model = providerId === 'custom' ? (customModel || 'gpt-4o') : modelId
   const canConfirm = Boolean(planDraft && !trip)
   const tripDays = Array.isArray(trip?.days) ? (trip.days as unknown[]).length : null
+  // 生成中的气泡每来一个字都会变。问答只跟已经写完的对话走，避免点选被冲掉
+  const settledBubbles = useMemo(
+    () => bubbles.filter((b) => !b.pending),
+    [bubbles],
+  )
+  const settledKey = settledBubbles.map((b) => `${b.role}\n${b.text}`).join('\n---\n')
   const askItems = useMemo(() => {
-    if (canConfirm) return extractAskItems(planDraft, { loose: true })
+    const answered = settledBubbles
+      .filter((b) => b.role === 'user')
+      .slice(-6)
+      .flatMap((b) => answeredAskKeys(b.text))
+    const lastUser = [...settledBubbles].reverse().find((b) => b.role === 'user' && b.text.trim())
+    // 刚交过答就先收起卡片。下一句是用户新的原话时，才允许再问
+    if (lastUser && answeredAskKeys(lastUser.text).length) return []
+    if (canConfirm) return omitAnsweredAsks(extractAskItems(planDraft, { loose: true }), answered)
     if (!trip) return []
-    const last = [...bubbles].reverse().find((b) => b.role === 'assistant' && !b.pending && String(b.text || '').trim())
-    return last ? extractAskItems(last.text) : []
-  }, [canConfirm, planDraft, trip, bubbles])
+    const last = [...settledBubbles].reverse().find((b) => b.role === 'assistant' && String(b.text || '').trim())
+    return last ? omitAnsweredAsks(extractAskItems(last.text), answered) : []
+  }, [canConfirm, planDraft, trip, settledKey])
   const planQuestions = askItems
+  const pickedByQuestion = useRef<Record<string, string>>({})
 
   useEffect(() => {
     localStorage.setItem('ct.provider', providerId)
@@ -230,7 +280,11 @@ export default function App() {
   }, [providerId, modelId, apiKey, customBaseUrl, customModel, amapKey, tiandituKey, searchKey, searchProvider, searchFallbackKey, searchFallbackProvider])
 
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
+    const el = logRef.current
+    if (!el) return
+    // 手机上用瞬间滚动，避免 smooth 与手势抢滚动造成抖动
+    const smooth = !window.matchMedia('(max-width: 900px)').matches
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
   }, [bubbles, busy])
 
   useEffect(() => {
@@ -261,8 +315,16 @@ export default function App() {
 
   const askKey = askItems.map((item) => item.question).join('\n')
   useEffect(() => {
-    setPlanAnswers(askItems.map(() => ''))
+    setPlanAnswers(askItems.map((item) => pickedByQuestion.current[item.question] || ''))
+    setAskWriting({})
   }, [askKey])
+  // 选中结果只从这里写回，不能写进 setPlanAnswers 的更新函数。
+  // 开发模式会把更新函数调两遍：第一遍刚写入 ref，第二遍会把它当成「再点一次」取消掉。
+  useEffect(() => {
+    askItems.forEach((item, i) => {
+      pickedByQuestion.current[item.question] = planAnswers[i] || ''
+    })
+  }, [planAnswers, askKey])
 
   useEffect(() => {
     if (loadSetting('ct.keyBad', '') && sanitizeApiKey(apiKey)) {
@@ -314,6 +376,8 @@ export default function App() {
     setTrip(s?.trip || null)
     setHtml(s?.trip && s.html ? s.html : WELCOME_HTML)
     setPlanDraft(s?.planDraft || '')
+    pickedByQuestion.current = {}
+    setPlanAnswers([])
     setPlanningPersona(s?.persona || '')
     researchRef.current = (s?.research || {}) as typeof researchRef.current
     setPrefOffer(null)
@@ -417,29 +481,38 @@ export default function App() {
     setSessionId(s.id)
   }
 
-  async function dropTrip(id: string) {
+  function askDropTrip(id: string) {
     if (busy) return
     const meta = sessionList.find((s) => s.id === id)
-    if (!window.confirm(`删除「${meta?.title || '这趟行程'}」？对话、页面和版本都会删掉。`)) return
+    setDeleteConfirm({ id, title: meta?.title || '这趟行程' })
+  }
+
+  async function confirmDropTrip() {
+    const target = deleteConfirm
+    if (!target || busy) return
+    setDeleteConfirm(null)
+    const { id } = target
     // 先换掉当前会话，免得还没触发的自动保存把刚删的又写回去
     if (id === sessionId) {
       resetWorkspace()
       const fresh = newSessionId()
       rememberSessionId(fresh)
       setSessionId(fresh)
+      setMobileView('chat')
     }
     await removeSession(id).catch(() => {})
     setSessionList(await listSessions().catch(() => []))
+    showToast('已删除')
   }
 
-  const previewDoc = useMemo(() => html, [html])
+  const previewDoc = useMemo(() => repairMobileChecklist(html), [html])
 
   function showToast(msg: string) {
     setToast(msg)
     window.setTimeout(() => setToast(''), 2400)
   }
 
-  async function applyTrip(next: Trip, opts?: { themeId?: string; keepThemeId?: string; fallback?: boolean; skipPhotos?: boolean; skipTransport?: boolean; replacePhotos?: boolean; photoNames?: string[]; photoKinds?: string[]; photoHint?: string; photoDays?: number[]; photoQuery?: string }) {
+  async function applyTrip(next: Trip, opts?: { themeId?: string; keepThemeId?: string; fallback?: boolean; fast?: boolean; recordVersion?: boolean; skipPhotos?: boolean; skipTransport?: boolean; replacePhotos?: boolean; fillGaps?: boolean; photoMode?: 'fill_gaps' | 'replace'; photoNames?: string[]; photoKinds?: string[]; photoHint?: string; photoDays?: number[]; photoQuery?: string }) {
     const out = await renderTripPage(next, {
       ...opts,
       amapKey: amapKey.trim() || undefined,
@@ -448,11 +521,15 @@ export default function App() {
       searchProvider,
       searchFallbackKey: searchFallbackKey.trim() || undefined,
       searchFallbackProvider,
+      authToken: authTokenRef.current,
     })
     setTrip(out.trip)
     setHtml(out.html)
     setReport({ errors: out.errors || [], warnings: out.warnings || [] })
-    if (out.trip && Array.isArray((out.trip as unknown as { days?: unknown[] }).days) && ((out.trip as unknown as { days?: unknown[] }).days as unknown[]).length) {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
+      switchMobileView('preview')
+    }
+    if (opts?.recordVersion !== false && out.trip && Array.isArray((out.trip as unknown as { days?: unknown[] }).days) && ((out.trip as unknown as { days?: unknown[] }).days as unknown[]).length) {
       const label = new Date().toLocaleString('zh-CN', { hour12: false }).slice(5, 16)
       const entry = { label, trip: out.trip as Trip, html: out.html }
       setVersions((prev) => {
@@ -508,6 +585,7 @@ export default function App() {
       const out = await applyTrip(data, { skipPhotos: true })
       setPlanDraft('')
       setPlanAnswers([])
+      setAskWriting({})
       setPlanningPersona('')
       showToast(out.themeName ? `已载入示例行程（${out.themeName}）` : '已载入示例行程表')
     } catch (err) {
@@ -520,7 +598,10 @@ export default function App() {
     try {
       const res = await fetch('/api/seed/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authTokenRef.current ? { Authorization: `Bearer ${authTokenRef.current}` } : {}),
+        },
         body: JSON.stringify({ trip }),
       })
       const out = await res.json()
@@ -554,6 +635,7 @@ export default function App() {
         searchProvider,
         searchFallbackKey: searchFallbackKey.trim(),
         searchFallbackProvider,
+        authToken: authTokenRef.current,
       })
       researchRef.current = {
         done: true,
@@ -631,7 +713,9 @@ export default function App() {
     const found = detectPersona(nextPlan)
     if (found) setPlanningPersona(found)
     setPlanDraft(nextPlan)
-    setPlanAnswers(extractAskItems(nextPlan).map(() => ''))
+    const nextAsks = extractAskItems(nextPlan)
+    setPlanAnswers(nextAsks.map((item) => pickedByQuestion.current[item.question] || ''))
+    setAskWriting({})
     setBubbles((prev) => {
       const next = [...prev]
       next[next.length - 1] = {
@@ -648,15 +732,27 @@ export default function App() {
     return nextPlan
   }
 
+  function showWait(text: string) {
+    setPageWait(text)
+    setBubbles((prev) => {
+      const next = [...prev]
+      const last = next[next.length - 1]
+      if (last?.pending) next[next.length - 1] = { ...last, text }
+      return next
+    })
+  }
+
   async function runFill(plan: string, fresh = false) {
+    const runId = runIdRef.current
     setGenerating(true)
+    showWait('正在按确认的安排填写行程')
     try {
     const research = researchRef.current
     const history: ChatMessage[] = buildFillMessages({ brief: research.brief, bubbles: fresh ? [] : bubbles, plan })
     let acc = ''
     try {
-      const filled = await streamTo(history, 'fill', '正在填写行程表…')
-      if (filled.signal.aborted) return
+      const filled = await streamTo(history, 'fill', '正在按确认的安排填写行程')
+      if (filled.signal.aborted || runIdRef.current !== runId) return
       acc = filled.acc
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -675,14 +771,11 @@ export default function App() {
       nextTrip.dataSources = research.sources
     }
     if (research.openHours?.length) nextTrip.openHours = research.openHours
-    let out = await applyTrip(nextTrip)
+    showWait('正在先排出每天的线路')
+    let out = await applyTrip(nextTrip, { fast: true, recordVersion: false })
     const qualityOf = (page: { quality?: string[] }) => page.quality || []
     if ((out.errors.length || qualityOf(out).length) && parsed) {
-      setBubbles((prev) => {
-        const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', text: out.errors.length ? '页面校验未过，正在修表…' : '质检还缺店名或规划条，正在补…', pending: true }
-        return next
-      })
+      showWait(out.errors.length ? '页面校验未过，正在修表' : '还有店名或规划没写清，正在补')
       try {
         const repair = [
           ...history,
@@ -696,16 +789,23 @@ export default function App() {
             ].filter(Boolean).join('\n'),
           },
         ]
-        const fixedRun = await streamTo(repair, 'fill', '正在修表…')
-        if (fixedRun.signal.aborted) return
+        const fixedRun = await streamTo(repair, 'fill', '正在补全行程表')
+        if (fixedRun.signal.aborted || runIdRef.current !== runId) return
         const fixed = extractTrip(fixedRun.acc)
         if (fixed) {
           if (research.hotelsByTier && !fixed.hotelHints) fixed.hotelHints = research.hotelsByTier
-          out = await applyTrip(fixed)
+          out = await applyTrip(fixed, { fast: true, recordVersion: false })
         }
       } catch {
         /* 修表失败也保留已出的页 */
       }
+    }
+    setGenerating(false)
+    showWait('正在核对路况、门票和图片')
+    try {
+      out = await applyTrip(out.trip)
+    } catch {
+      /* 路况和图片没补上时，保留已经能看的行程 */
     }
     const gaps = qualityOf(out)
     const note = !parsed
@@ -715,9 +815,13 @@ export default function App() {
         : gaps.length
           ? '已出页。质检还缺：' + gaps.slice(0, 2).join('；') + (gaps.length > 2 ? `等 ${gaps.length} 处` : '') + '。直接说店名或第几天，我来补。'
           : (out.fallback ? '这版版式没过检查，已换回陶土宣纸，内容不受影响。' : `已出页。要改某一天，直接说改哪个点；问时间、距离、累不累，我先回答。`)
+    if (runIdRef.current !== runId) return
     finishBubble(note)
     } finally {
-      setGenerating(false)
+      if (runIdRef.current === runId) {
+        setGenerating(false)
+        setPageWait('')
+      }
     }
   }
 
@@ -848,10 +952,10 @@ export default function App() {
     return commitEdit(nextTrip, applied, failed, namesChanged, restyleAsked, env.reply, touched)
   }
 
-  async function runPhotos(text: string, append = false, fromTrip?: Trip | null) {
+  async function runPhotos(text: string, append = false, fromTrip?: Trip | null, priorAsk = '') {
     const base = fromTrip || trip
     if (!base) return
-    const req = collectPhotoRequest(text, base)
+    const req = resolvePhotoIntent(text, base, { priorAsk })
     if (!req.names.length && !req.kinds.length && !req.days.length) {
       const msg = '请点名哪一天或哪个景点要换图，避免把别的格子换错。'
       if (append) {
@@ -868,10 +972,14 @@ export default function App() {
     }
     const keepThemeId = String((base.ui as { themeId?: string } | undefined)?.themeId || '')
     const beforePhotos = JSON.stringify(collectPhotos(base))
+    const fillGaps = req.mode === 'fill_gaps'
+    const replace = req.mode === 'replace'
     const out = await applyTrip(base, {
       keepThemeId: keepThemeId || undefined,
       skipPhotos: false,
-      replacePhotos: true,
+      replacePhotos: replace,
+      fillGaps,
+      photoMode: req.mode,
       photoNames: req.names,
       photoKinds: req.kinds,
       photoHint: req.hint,
@@ -883,17 +991,20 @@ export default function App() {
     // 逐格说真话：换上了哪几个、哪几个公开图库真的没有
     const outcome = photoOutcome(base, out.trip, req)
     const scope = req.days.length ? `D${req.days.join('、D')} ` : ''
+    const didVerb = fillGaps ? '已对号入座补上' : '已全部重搜覆盖'
     const lines = [
-      outcome.changed.length ? `${scope}已换上新图：${outcome.changed.join('、')}。` : '',
+      outcome.changed.length ? `${scope}${didVerb}：${outcome.changed.join('、')}。` : '',
       outcome.missing.length
-        ? `${scope}没找到合格图：${outcome.missing.join('、')}（公开图库里没有对得上的，已保留原样）。可以直接给我一个能打开的图片链接，或换个更通用的地名让我再搜。`
+        ? `${scope}仍缺合格图：${outcome.missing.join('、')}（公开图库里没有对得上的，已保留原样）。可以直接给我一个能打开的图片链接，或换个更通用的地名让我再搜。`
         : '',
     ].filter(Boolean)
     const msg = lines.length
       ? lines.join('\n')
       : changedPhotos
-        ? '已按你点名的格子补图。'
-        : `${scope}的图没换成：没找到可用的新图，原图保留。请确认点名是不是真名，或直接给我图片链接。`
+        ? (fillGaps ? '已检查各格：真图保留，空位/占位/明显坏图已对号入座替换。' : '已按你的要求把范围内图片全部重新搜索覆盖。')
+        : fillGaps
+          ? `${scope}检查完毕：没有空位、占位或明显错误的图需要替换。`
+          : `${scope}全部重搜后仍没有可用新图，原图保留。可换个地名或直接给我图片链接。`
     if (append) {
       setBubbles((prev) => {
         const next = [...prev]
@@ -907,26 +1018,49 @@ export default function App() {
   }
 
   function setAnswer(index: number, value: string, toggle = false) {
-    setPlanAnswers((prev) => planQuestions.map((_, i) => {
-      if (i !== index) return prev[i] || ''
-      if (toggle && prev[i] === value) return ''
-      return value
-    }))
+    const count = planQuestions.length
+    setPlanAnswers((prev) => {
+      const next = Array.from({ length: count }, (_, i) => prev[i] || '')
+      const cur = next[index] || ''
+      next[index] = toggle && cur === value ? '' : value
+      return next
+    })
+    if (toggle) {
+      setAskWriting((prev) => {
+        if (!prev[index]) return prev
+        const next = { ...prev }
+        delete next[index]
+        return next
+      })
+    }
+  }
+
+  function switchMobileView(next: 'chat' | 'preview') {
+    setMobileView(next)
+    if (next === 'chat') {
+      window.requestAnimationFrame(() => {
+        logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
+      })
+    }
   }
 
   async function submitPlanAnswers() {
-    if (!planQuestions.length || busy) return
+    if (!planQuestions.length) return
     if (planAnswers.some((a) => !String(a || '').trim())) {
       showToast('每道待确认都选好或写好后，再确认')
       return
     }
     const reply = formatAskAnswers(askItems, planAnswers)
     if (trip) {
+      if (busy) return
       await run(reply, true)
       return
     }
     if (!planDraft) return
     if (!requireModelKey()) return
+    // 大纲还没确认就先去填整页，会把选项锁死，也白等一轮长生成。确认时停掉那一轮。
+    const runId = ++runIdRef.current
+    abortRef.current?.abort()
     const plan = `${planDraft.trim()}\n\n${reply}`
     setError('')
     setBusy(true)
@@ -935,9 +1069,9 @@ export default function App() {
       setPlanDraft(plan)
       await runFill(plan)
     } catch (err) {
-      showFail(err instanceof Error ? err.message : String(err))
+      if (runIdRef.current === runId) showFail(err instanceof Error ? err.message : String(err))
     } finally {
-      setBusy(false)
+      if (runIdRef.current === runId) setBusy(false)
     }
   }
 
@@ -988,7 +1122,7 @@ export default function App() {
     for (const f of list) {
       try {
         // 一个 zip 可能拆出好几条，所以按数组收
-        added.push(...await readAttachments(f))
+        added.push(...await readAttachments(f, authTokenRef.current))
       } catch (err) {
         bad.push(err instanceof Error ? err.message : String(err))
       }
@@ -1135,12 +1269,15 @@ export default function App() {
       ...(note ? [{ role: 'assistant' as const, text: note }] : []),
       { role: 'assistant' as const, text: '', pending: true },
     ])
+    const runId = runIdRef.current
     setGenerating(true)
     try {
-      const plan = await runPlan([text, line].filter(Boolean).join('\n'), true, true)
-      if (plan) await runFill(plan, true)
+      const plan = await runPlan([text, line].filter(Boolean).join('\n'), true, false)
+      if (runIdRef.current !== runId || !plan) return
+      // 还有待确认就先让人选。选完再填页，避免未答题就跑一整轮慢生成。
+      if (extractAskItems(plan).length === 0) await runFill(plan, true)
     } finally {
-      setGenerating(false)
+      if (runIdRef.current === runId) setGenerating(false)
     }
   }
 
@@ -1162,6 +1299,7 @@ export default function App() {
   async function run(prompt: string, sameTask = false) {
     const text = prompt.trim()
     if (busy) return
+    const runId = ++runIdRef.current
     if (prefOffer) setPrefOffer(null)
     const pics = attachments.filter((a) => a.kind === 'image')
     const docs = attachments.filter((a) => a.kind === 'text')
@@ -1176,11 +1314,18 @@ export default function App() {
     const requestPack = [text, ...bubbles.filter((b) => b.role === 'user' && b.text.trim() && !b.pending).slice(-3).map((b) => b.text)].join('\n')
     const replay = Boolean(trip && (wantsPageSync(text) || /继续(优化|改|做)|一直没有|没有反应/.test(text)))
     const pack = replay ? requestPack : text
+    const lastAssistant = [...bubbles].reverse().find((b) => b.role === 'assistant' && !b.pending && String(b.text || '').trim())?.text || ''
+    // 上一轮在问「换哪一天」，用户回「全部都换」→ 强制走配图，并带上追问上下文做指代消解
+    const photoFollowup = Boolean(trip && isPhotoScopeClarify(lastAssistant) && wantsPhotos(text, lastAssistant))
     const doLook = Boolean(pics.length && wantsVision(text, Boolean(trip)))
     const confirmPlan = Boolean(!trip && planDraft && isConfirm(text))
     const routed = Boolean((trip || planDraft) && text && !pics.length && !confirmPlan && !(trip && restyleOnly))
     const keyReady = serverModel ? Boolean(authTokenRef.current) : Boolean(sanitizeApiKey(apiKey))
-    const preset: Turn | null = sameTask ? { ...localTurn('', '', null), action: 'edit' } : null
+    const preset: Turn | null = sameTask
+      ? { ...localTurn('', '', null), action: 'edit' }
+      : photoFollowup
+        ? { ...localTurn(openingText(), text, tripDays), action: 'photos' }
+        : null
     const offline = routed && !keyReady ? (preset || localTurn(openingText(), text, tripDays)) : null
     const offlineNew = Boolean(offline && isNewTask(offline, text))
     const localEdit = (() => {
@@ -1188,7 +1333,7 @@ export default function App() {
       const local = inferLocalEdit(text, recentForLocal)
       return Boolean(local.replaceDays.length || local.changes.length || local.adds.length)
     })()
-    const free = Boolean((pics.length && !doLook) || (trip && restyleOnly) || (trip && offline && !offlineNew && offline.action === 'photos') || localEdit)
+    const free = Boolean((pics.length && !doLook) || (trip && restyleOnly) || (trip && offline && !offlineNew && offline.action === 'photos') || localEdit || photoFollowup)
     if (!free && !requireModelKey()) return
     setError('')
     setInput('')
@@ -1233,7 +1378,11 @@ export default function App() {
         setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
         return
       }
-      const turn = preset || offline || await judgeTurn(text)
+      const judged = preset || offline || await judgeTurn(text)
+      // 模型若把「全部都换」判成 ask/edit，本机纠回 photos
+      const turn = photoFollowup || (trip && wantsPhotos(text) && judged.action === 'ask')
+        ? { ...judged, action: 'photos' as const }
+        : judged
       if (isNewTask(turn, text)) {
         await startNewTask(ask, planPrefs(turn, [...turn.task.places, ...tripNames(trip)]))
         setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
@@ -1244,48 +1393,71 @@ export default function App() {
       } else if (turn.action === 'replan') {
         setGenerating(true)
         try {
-          const plan = await runPlan(ask, false, true)
-          if (plan) await runFill(plan)
+          const plan = await runPlan(ask, false, false)
+          if (runIdRef.current !== runId || !plan) return
+          if (extractAskItems(plan).length === 0) await runFill(plan)
         } finally {
-          setGenerating(false)
+          if (runIdRef.current === runId) setGenerating(false)
         }
       } else if (turn.action === 'photos') {
-        await runPhotos(pack, false, trip)
+        await runPhotos(pack, false, trip, lastAssistant)
       } else if (turn.action === 'ask') {
         await runTalk(ask)
       } else {
         const edited = await runEdit(ask, restyleAsked)
-        if (wantsPhotos(text)) await runPhotos(pack, true, edited)
+        if (wantsPhotos(text)) await runPhotos(pack, true, edited, lastAssistant)
       }
       setAttachments((prev) => prev.filter((a) => a.kind !== 'text'))
     } catch (err) {
-      if (abortRef.current?.signal.aborted) return
+      if (runIdRef.current !== runId || abortRef.current?.signal.aborted) return
       showFail(err instanceof Error ? err.message : String(err))
     } finally {
-      setBusy(false)
+      if (runIdRef.current === runId) setBusy(false)
     }
   }
 
-  async function onShare() {
+  useEffect(() => {
+    if (!shareOpen) return
+    let cancel = false
+    setShareUrl('')
+    setShareError('')
+    setShareBusy(true)
+    publishShare(html, authTokenRef.current)
+      .then((url) => { if (!cancel) setShareUrl(url) })
+      .catch((err) => { if (!cancel) setShareError(err instanceof Error ? err.message : '链接生成失败') })
+      .finally(() => { if (!cancel) setShareBusy(false) })
+    return () => { cancel = true }
+  }, [shareOpen, html])
+
+  const shareQr = useMemo(() => (
+    shareUrl
+      ? renderSVG(shareUrl, { ecc: 'M', border: 2, pixelSize: 4, blackColor: '#0e1530', whiteColor: '#ffffff' })
+      : ''
+  ), [shareUrl])
+
+  async function onCopyLink() {
     try {
-      const mode = await sharePage(html)
-      showToast(mode === 'copied' ? '已复制 HTML，可发给同伴' : '已调起系统分享')
-      setShareOpen(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      await navigator.clipboard.writeText(shareUrl)
+      showToast('链接已复制，可以粘贴到微信')
+    } catch {
+      setShareError('没有复制成功，请选中链接手动复制')
     }
   }
 
-  async function onCopy() {
-    await copyHtml(html)
-    showToast('HTML 已复制到剪贴板')
-    setShareOpen(false)
+  async function onSendLink() {
+    if (!shareUrl || !navigator.share) return
+    try {
+      await navigator.share({ title: trip?.title || '行程', url: shareUrl })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setShareError(err instanceof Error ? err.message : '没有发出去')
+    }
   }
 
   async function onImage() {
     try {
       showToast('正在导出长图…')
-      await exportImage(iframeRef.current, html, device)
+      await exportImage(html, device)
       showToast('长图已开始下载')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -1299,19 +1471,16 @@ export default function App() {
   const authChecking = !authReady && Boolean(authTokenRef.current)
 
   return (
-    <div className={signedIn ? 'shell' : 'shell gate'}>
+    <div className={signedIn ? `shell mobile-${mobileView}` : 'shell gate'}>
       {!signedIn ? (
         <>
           <AlpineScene />
           <div className="gate-mark">
-            <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true">
-              <path d="M1 15 L8.5 3 L12 8 L15 4.5 L21 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            </svg>
-            Travel Monkey
+            <BrandLogo large size={28} />
           </div>
           <main className="gate-main">
             <h1 className="gate-title">出发之前，<br />路线已经画好。</h1>
-            <p className="gate-lede">说出去哪、几个人、玩几天，行程就排好了。</p>
+            <p className="gate-lede">说“去哪、几个人、玩几天，行程就画好了”。</p>
             {authChecking ? (
               <p className="gate-status">正在确认登录…</p>
             ) : (
@@ -1333,14 +1502,9 @@ export default function App() {
         </>
       ) : (
       <>
-      <aside className="pane">
+      <aside className="pane" id="tm-chat-pane">
         <header className="brand">
-          <div className="brand-mark" title={skillLabel || undefined}>
-            <svg width="20" height="14" viewBox="0 0 22 16" aria-hidden="true">
-              <path d="M1 15 L8.5 3 L12 8 L15 4.5 L21 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-            </svg>
-            Travel Monkey
-          </div>
+          <BrandLogo size={24} title={skillLabel || undefined} />
           <button type="button" className="account-chip" aria-label={`账号 ${authUser}`} title={authUser} onClick={() => openAuth('account')}>
             {(authUser || '?').slice(0, 1).toUpperCase()}
           </button>
@@ -1365,7 +1529,7 @@ export default function App() {
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>
           {sessionList.some((s) => s.id === sessionId) && (
-            <button type="button" className="icon-btn" aria-label="删除这个行程" title="删除这个行程" disabled={busy} onClick={() => void dropTrip(sessionId)}>
+            <button type="button" className="icon-btn" aria-label="删除这个行程" title="删除这个行程" disabled={busy} onClick={() => askDropTrip(sessionId)}>
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" /></svg>
             </button>
           )}
@@ -1409,6 +1573,25 @@ export default function App() {
                   <button key={ex} type="button" title={ex} disabled={busy} onClick={() => setInput(ex)}>{ex}</button>
                 ))}
               </div>
+              {seedList.length > 0 && (
+                <div className="seed-entry">
+                  <label className="seed-entry-label">
+                    <span>看看示例行程</span>
+                    <select
+                      className="seed-pick"
+                      value=""
+                      disabled={busy}
+                      aria-label="载入示例行程"
+                      onChange={(e) => { if (e.target.value) void loadSeed(e.target.value) }}
+                    >
+                      <option value="">选一份示例</option>
+                      {seedList.map((s, i) => (
+                        <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
           )}
           {bubbles.map((b, i) => {
@@ -1469,37 +1652,51 @@ export default function App() {
         {askItems.length > 0 && (
           <div className="plan-ask">
             <div className="plan-ask-k">{trip ? '选完点确认，会更新当前行程' : '选完点确认，会直接生成行程'}</div>
-            {askItems.map((item, i) => (
-              <div key={item.question} className="plan-q">
-                <p>{i + 1}. {item.question}</p>
-                <div className="plan-q-ops">
-                  <span className="plan-q-ans">答案</span>
-                  {choicesForQuestion(item.source).map((opt) => (
+            {askItems.map((item, i) => {
+              const choices = choicesForQuestion(item.source)
+              const picked = planAnswers[i] || ''
+              const writing = Boolean(askWriting[i]) || (picked && !choices.includes(picked))
+              return (
+                <div key={item.question} className={`plan-q${writing ? ' is-writing' : ''}`}>
+                  <p>{i + 1}. {item.question}</p>
+                  <div className="plan-q-ops">
+                    <span className="plan-q-ans">答案</span>
+                    {choices.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={picked === opt ? 'on' : ''}
+                        onClick={() => setAnswer(i, opt, true)}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                  {choices.length > 0 && !writing && (
                     <button
-                      key={opt}
                       type="button"
-                      className={planAnswers[i] === opt ? 'on' : ''}
-                      disabled={busy}
-                      onClick={() => setAnswer(i, opt, true)}
+                      className="plan-q-write"
+                      onClick={() => setAskWriting((prev) => ({ ...prev, [i]: true }))}
                     >
-                      {opt}
+                      自行填写
                     </button>
-                  ))}
+                  )}
+                  {(writing || choices.length === 0) && (
+                    <input
+                      value={picked}
+                      placeholder={ASK_WRITE_HINT}
+                      onChange={(e) => setAnswer(i, e.target.value)}
+                    />
+                  )}
                 </div>
-                <input
-                  value={planAnswers[i] || ''}
-                  disabled={busy}
-                  placeholder={ASK_WRITE_HINT}
-                  onChange={(e) => setAnswer(i, e.target.value)}
-                />
-              </div>
-            ))}
-            <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。点错选项可再点一次取消。</p>
+              )
+            })}
+            <p className="plan-ask-hint">已选 {planAnswers.filter((a) => String(a || '').trim()).length}/{askItems.length}。点错选项可再点一次取消。{busy ? '这一页还在生成，可以先选，出来后再点确认。' : ''}</p>
             <div className="plan-ask-bar">
               <button
                 type="button"
                 className="go"
-                disabled={busy || planAnswers.some((a) => !String(a || '').trim())}
+                disabled={planAnswers.some((a) => !String(a || '').trim())}
                 onClick={() => void submitPlanAnswers()}
               >
                 {trip ? '确认并更新' : '确认并生成'}
@@ -1518,7 +1715,6 @@ export default function App() {
                 aria-checked={planningPersona === p.id}
                 title={p.hint}
                 className={planningPersona === p.id ? 'is-picked' : ''}
-                disabled={busy}
                 onClick={() => setPlanningPersona(planningPersona === p.id ? '' : p.id)}
               >
                 {p.label}
@@ -1579,25 +1775,14 @@ export default function App() {
             }}
           />
           <div className="composer-bar">
-            <select
-              className="seed-pick"
-              value=""
-              disabled={busy}
-              title="载入示例行程"
-              onChange={(e) => { if (e.target.value) void loadSeed(e.target.value) }}
-            >
-              <option value="">载入示例行程</option>
-              {seedList.map((s, i) => (
-                <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>
-              ))}
-            </select>
-            {canConfirm && askItems.length === 0 && (
-              <button type="button" className="go" disabled={busy} onClick={() => void confirmPage()}>
-                {busy ? '生成中' : '确认生成'}
+            {/* 生成中只保留一颗按钮，避免「确认生成」与「发送」同时变成「生成中」 */}
+            {canConfirm && askItems.length === 0 && !busy && (
+              <button type="button" className="go" onClick={() => void confirmPage()}>
+                确认生成
               </button>
             )}
             <button type="submit" className="go" disabled={busy}>
-              {busy ? '生成中' : trip || planDraft ? '发送' : '生成计划'}
+              {busy ? '生成中' : trip || planDraft ? '发送' : '生成行程'}
             </button>
           </div>
         </form>
@@ -1605,19 +1790,43 @@ export default function App() {
         {serverModel && (
           <footer className="pane-foot">
             <p className="model-line">
-              {serverCfg.model?.model}，{authUser ? `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次` : `每人每天 ${serverCfg.dailyLimit} 次`}
+              本agent已接入DeepSeek模型，{authUser
+                ? (quotaUnlimited ? '不限次数' : `今天还能用 ${quotaLeft ?? serverCfg.dailyLimit} 次`)
+                : `每人每天 ${serverCfg.dailyLimit} 次`}
               <button type="button" className="link-btn" onClick={switchToOwnKey}>改用自己的模型密钥</button>
             </p>
           </footer>
         )}
+
+        <nav className="mobile-tabs" aria-label="手机视图切换">
+          <button
+            type="button"
+            className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
+            aria-pressed={mobileView === 'chat'}
+            aria-controls="tm-chat-pane"
+            onClick={() => switchMobileView('chat')}
+          >
+            对话
+          </button>
+          <button
+            type="button"
+            className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
+            aria-pressed={mobileView === 'preview'}
+            aria-controls="tm-preview-pane"
+            onClick={() => switchMobileView('preview')}
+          >
+            预览
+          </button>
+        </nav>
       </aside>
 
-      <main className="stage">
+      <main className="stage" id="tm-preview-pane">
         <div className="toolbar">
           <div className="seg">
             <button type="button" className={device === 'phone' ? 'on' : ''} onClick={() => setDevice('phone')}>手机</button>
             <button type="button" className={device === 'desktop' ? 'on' : ''} onClick={() => setDevice('desktop')}>桌面</button>
           </div>
+          {pageWait && !generating && <p className="page-enrich" role="status">{pageWait}</p>}
           {trip && <div className="actions">
             <button type="button" onClick={() => void restyle()}>换皮</button>
             {versions.length > 1 && (
@@ -1648,18 +1857,55 @@ export default function App() {
           </div>}
         </div>
         <div className={`frame ${device}`}>
-          <iframe ref={iframeRef} title="行程预览" srcDoc={previewDoc} sandbox="allow-scripts allow-same-origin allow-popups" />
+          <iframe ref={iframeRef} title="行程预览" srcDoc={previewDoc} sandbox="allow-scripts allow-popups" />
           {generating && (
             <div className="page-loading" role="status" ref={loadingRef}>
               <div className="page-loading-box">
                 <span className="page-loading-spin" aria-hidden="true" />
-                <p>行程正在生成，请稍后</p>
+                <p>{pageWait || '行程正在生成，请稍后'}</p>
               </div>
             </div>
           )}
         </div>
+
+        <nav className="mobile-tabs" aria-label="手机视图切换">
+          <button
+            type="button"
+            className={`tab-chat${mobileView === 'chat' ? ' on' : ''}`}
+            aria-pressed={mobileView === 'chat'}
+            aria-controls="tm-chat-pane"
+            onClick={() => switchMobileView('chat')}
+          >
+            对话
+          </button>
+          <button
+            type="button"
+            className={`tab-preview${mobileView === 'preview' ? ' on' : ''}`}
+            aria-pressed={mobileView === 'preview'}
+            aria-controls="tm-preview-pane"
+            onClick={() => switchMobileView('preview')}
+          >
+            预览
+          </button>
+        </nav>
       </main>
       </>
+      )}
+
+      {deleteConfirm && (
+        <div className="modal" onClick={() => setDeleteConfirm(null)}>
+          <div className="sheet" role="dialog" aria-labelledby="delete-dialog-title" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="dialog-close" aria-label="关闭" onClick={() => setDeleteConfirm(null)}>
+              <span aria-hidden="true">×</span>
+            </button>
+            <h2 id="delete-dialog-title">删除行程？</h2>
+            <p>删除「{deleteConfirm.title}」后，对话、页面和版本都会删掉，不能恢复。</p>
+            <div className="sheet-actions">
+              <button type="button" className="ghost" onClick={() => setDeleteConfirm(null)}>取消</button>
+              <button type="button" className="primary" onClick={() => void confirmDropTrip()}>确认删除</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {keyDialogOpen && (
@@ -1800,21 +2046,48 @@ export default function App() {
 
       {shareOpen && (
         <div className="modal" onClick={() => setShareOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="sheet share-sheet" role="dialog" aria-labelledby="share-title" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="dialog-close" aria-label="关闭" onClick={() => setShareOpen(false)}>
               <span aria-hidden="true">×</span>
             </button>
-            <h2>发给同伴</h2>
-            <p>H5 是一个单独的文件，微信或邮件直接传，对方离线也能打开。</p>
-            <div className="sheet-actions">
-              <button type="button" className="primary" onClick={() => void onShare()}>系统分享</button>
-              <button type="button" onClick={() => void onCopy()}>复制 HTML</button>
-              <button type="button" onClick={() => { exportH5(html); setShareOpen(false) }}>下载 H5</button>
-            </div>
+            <h2 id="share-title">分享行程</h2>
+            <p className="share-lead">把链接发到微信聊天，对方就能打开这份行程。在微信里点右上角「···」，还可以发给其他好友或分享到朋友圈。</p>
+            {shareBusy && <p className="share-status">正在生成链接…</p>}
+            {shareError && <p className="share-note">{shareError}</p>}
+            {shareUrl && (
+              <>
+                {shareReach(shareUrl) === 'local' && (
+                  <p className="share-note">这是本机地址，手机上的微信打不开。请用手机能访问的网址打开后再分享。</p>
+                )}
+                {shareReach(shareUrl) !== 'local' && shareUrl.startsWith('http://') && (
+                  <p className="share-note">当前链接只在这个网络里打得开。要发给外面的朋友，在 .env 填写 PUBLIC_BASE_URL（公网 https 域名）。</p>
+                )}
+                <div
+                  className="share-qr"
+                  role="img"
+                  aria-label="用微信扫码打开"
+                  dangerouslySetInnerHTML={{ __html: shareQr }}
+                />
+                <input
+                  className="share-link"
+                  readOnly
+                  value={shareUrl}
+                  aria-label="分享链接"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <div className="sheet-actions">
+                  <button type="button" className="primary" onClick={() => void onCopyLink()}>复制链接</button>
+                  {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                    <button type="button" onClick={() => void onSendLink()}>发送</button>
+                  )}
+                  <button type="button" onClick={() => { exportH5(html); showToast('H5 已下载') }}>下载 H5</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
       {signedIn && (authScreen || authSuccess) && (
         <AccountDialog
           screen={authScreen || 'login'}

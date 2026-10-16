@@ -26,13 +26,32 @@ function wgs84ToGcj02(lat, lng) {
   return { lat: lat * 2 - wgs.lat, lng: lng * 2 - wgs.lng }
 }
 
+const amapCache = new Map()
+
 async function amap(pathName, params) {
   const url = new URL(`https://restapi.amap.com/v3/${pathName}`)
   Object.entries(params).forEach(([k, v]) => {
     if (v != null && v !== '') url.searchParams.set(k, String(v))
   })
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-  return res.json()
+  const key = url.toString()
+  const hit = amapCache.get(key)
+  if (hit && hit.until > Date.now()) return hit.data
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+  const data = await res.json()
+  amapCache.set(key, { until: Date.now() + 10 * 60 * 1000, data })
+  return data
+}
+
+async function mapPool(items, limit, fn) {
+  let i = 0
+  const width = Math.min(limit, items.length || 1)
+  await Promise.all(Array.from({ length: width }, async () => {
+    while (i < items.length) {
+      const idx = i
+      i += 1
+      await fn(items[idx])
+    }
+  }))
 }
 
 function metersOf(pathOrTransit, fallbackKm) {
@@ -52,23 +71,7 @@ function parseTransitCost(transit) {
   return Number.isFinite(m) && m > 0 ? m : 0
 }
 
-async function amapTaxiYuan(amapKey, fromGcj, toGcj, meters) {
-  try {
-    const drive = await amap('direction/driving', {
-      key: amapKey,
-      origin: `${fromGcj.lng},${fromGcj.lat}`,
-      destination: `${toGcj.lng},${toGcj.lat}`,
-    })
-    const apiTaxi = Number(drive.route && drive.route.taxi_cost)
-    if (Number.isFinite(apiTaxi) && apiTaxi > 0) return Math.round(apiTaxi)
-    const path0 = drive.route && drive.route.paths && drive.route.paths[0]
-    return estimateTaxiYuan(metersOf(path0, 0) || meters)
-  } catch {
-    return estimateTaxiYuan(meters)
-  }
-}
-
-/** 无任何地图 Key：用直线距离 + 步行速度启发式，仍补距离/打车估价 */
+/** 无路网结果时：用直线距离 + 步行速度启发式，仍补距离/打车估价 */
 function localLeg(prev, cur, persona) {
   const km = havKm(Number(prev.lat), Number(prev.lng), Number(cur.lat), Number(cur.lng))
   const meters = Math.round(km * 1000)
@@ -183,12 +186,50 @@ async function tiandituLeg(tk, prev, cur, persona) {
   }
 }
 
+async function amapTransitLeg(amapKey, fromGcj, toGcj, prev, cur, km, tripTitle) {
+  const transit = await amap('direction/transit/integrated', {
+    key: amapKey,
+    origin: `${fromGcj.lng},${fromGcj.lat}`,
+    destination: `${toGcj.lng},${toGcj.lat}`,
+    city: String(tripTitle || '').slice(0, 8),
+  })
+  const t0 = transit.route && transit.route.transits && transit.route.transits[0]
+  if (!t0 || !fmtDuration(t0.duration)) return null
+  const meters = metersOf(t0, km)
+  const taxiYuan = estimateTaxiYuan(meters)
+  return {
+    mode: '公交/地铁',
+    fare: buildFare({ mode: '公交/地铁', transitYuan: parseTransitCost(t0), taxiYuan }),
+    duration: fmtDuration(t0.duration),
+    distance: fmtDistance(meters, km),
+    meters,
+    transitYuan: parseTransitCost(t0) || undefined,
+    taxiYuan: taxiYuan || undefined,
+    provider: 'amap',
+    actionLink: {
+      label: '导航',
+      url: navUri(
+        { lat: Number(prev.lat), lng: Number(prev.lng), name: prev.name },
+        { lat: Number(cur.lat), lng: Number(cur.lng), name: cur.name },
+        'bus',
+      ),
+    },
+  }
+}
+
 async function amapLeg(amapKey, prev, cur, persona, tripTitle) {
   const fromGcj = wgs84ToGcj02(Number(prev.lat), Number(prev.lng))
   const toGcj = wgs84ToGcj02(Number(cur.lat), Number(cur.lng))
   const km = havKm(Number(prev.lat), Number(prev.lng), Number(cur.lat), Number(cur.lng))
   const driveAfterKm = 30
   const walkToTransit = transitThresholdSec(persona)
+
+  // 同一景区里的相邻点，直线估算已经够用，不必再打一次路线接口
+  if (km < 0.35) {
+    const near = localLeg(prev, cur, persona)
+    near.provider = 'estimate'
+    return near
+  }
 
   if (km > driveAfterKm) {
     const drive = await amap('direction/driving', {
@@ -222,6 +263,14 @@ async function amapLeg(amapKey, prev, cur, persona, tripTitle) {
     }
   }
 
+  // 直线已经明显超过该人格的步行上限时，直接查公交，少一次必失败的步行请求
+  if (walkSecondsFromKm(km) > walkToTransit * 1.4) {
+    try {
+      const hopped = await amapTransitLeg(amapKey, fromGcj, toGcj, prev, cur, km, tripTitle)
+      if (hopped) return hopped
+    } catch { /* 再试步行 */ }
+  }
+
   const walk = await amap('direction/walking', {
     key: amapKey,
     origin: `${fromGcj.lng},${fromGcj.lat}`,
@@ -236,26 +285,12 @@ async function amapLeg(amapKey, prev, cur, persona, tripTitle) {
   let meters = metersOf(path0, km)
   if (Number.isFinite(seconds) && seconds > walkToTransit) {
     try {
-      const transit = await amap('direction/transit/integrated', {
-        key: amapKey,
-        origin: `${fromGcj.lng},${fromGcj.lat}`,
-        destination: `${toGcj.lng},${toGcj.lat}`,
-        city: String(tripTitle || '').slice(0, 8),
-      })
-      const t0 = transit.route && transit.route.transits && transit.route.transits[0]
-      if (t0) {
-        mode = '公交/地铁'
-        duration = fmtDuration(t0.duration)
-        navMode = 'bus'
-        transitYuan = parseTransitCost(t0)
-        meters = metersOf(t0, km) || meters
-      }
+      const hopped = await amapTransitLeg(amapKey, fromGcj, toGcj, prev, cur, km, tripTitle)
+      if (hopped) return hopped
     } catch { /* keep walking */ }
   }
   if (!duration) return null
-  let taxiYuan = 0
-  if (mode === '公交/地铁') taxiYuan = await amapTaxiYuan(amapKey, fromGcj, toGcj, meters)
-  else if (meters >= 800) taxiYuan = estimateTaxiYuan(meters)
+  const taxiYuan = meters >= 800 ? estimateTaxiYuan(meters) : 0
   return {
     mode,
     fare: buildFare({ mode, transitYuan, taxiYuan }),
@@ -277,11 +312,16 @@ async function amapLeg(amapKey, prev, cur, persona, tripTitle) {
 }
 
 function mapOpts(opts) {
-  if (typeof opts === 'string') return { amapKey: opts, tiandituKey: '' }
+  if (typeof opts === 'string') return { amapKey: opts, tiandituKey: '', localOnly: false }
   return {
     amapKey: String(opts?.amapKey || '').trim(),
     tiandituKey: String(opts?.tiandituKey || '').trim(),
+    localOnly: !!opts?.localOnly,
   }
+}
+
+function routeSettled(t) {
+  return transportComplete(t) && t.provider !== 'local'
 }
 
 function weakTicket(price) {
@@ -311,64 +351,70 @@ function poiNameMatches(poiName, query) {
   return p.includes(q) || q.includes(p)
 }
 
+async function fillTicket(slot, { amapKey, tiandituKey, cityHint }) {
+  const name = String(slot.name || '').trim()
+  if (amapKey) {
+    const data = await amap('place/text', {
+      key: amapKey,
+      keywords: name,
+      city: cityHint,
+      offset: 5,
+      extensions: 'all',
+    })
+    const pois = Array.isArray(data.pois) ? data.pois : []
+    const hit = pois.find((p) => poiNameMatches(p.name, name) && p.biz_ext && p.biz_ext.cost)
+      || pois.find((p) => poiNameMatches(p.name, name))
+    if (hit) {
+      const price = formatTicketCost(hit.biz_ext && hit.biz_ext.cost)
+      if (price) {
+        slot.ticketPrice = price
+        if (!slot.openingHours && hit.biz_ext) {
+          const open = hit.biz_ext.opentime || hit.biz_ext.open_time
+          if (open && String(open).trim() && String(open) !== '[]') slot.openingHours = String(open).trim()
+        }
+        return true
+      }
+      const type = String(hit.type || '')
+      if (/风景名胜|景区|公园|博物馆|寺庙|文物/.test(type)) {
+        slot.ticketPrice = '门票以官方为准（高德暂无标价）'
+        return true
+      }
+    }
+  }
+  if (tiandituKey && weakTicket(slot.ticketPrice)) {
+    const pois = await tdtSearchPoi(tiandituKey, name, cityHint)
+    const hit = pois.find((p) => poiNameMatches(p.name || p.hotPointID, name))
+    if (hit) {
+      slot.ticketPrice = slot.ticketPrice || '门票以官方为准（天地图无标价）'
+      return true
+    }
+  }
+  return false
+}
+
 export async function enrichTripTickets(trip, opts) {
   const { amapKey, tiandituKey } = mapOpts(opts)
   if (!amapKey && !tiandituKey) return trip
   const days = Array.isArray(trip.days) ? trip.days : []
   const cityHint = String(trip.title || '').replace(/\d+.*/, '').slice(0, 12)
-  let used = 0
+  const jobs = []
   for (const day of days) {
     for (const slot of day.slots || []) {
-      if (used >= MAX_TICKETS) break
+      if (jobs.length >= MAX_TICKETS) break
       if (!slot || (slot.kind !== 'spot' && slot.kind !== 'route')) continue
       if (!weakTicket(slot.ticketPrice)) continue
       const name = String(slot.name || '').trim()
       if (!name || /待定|午休|茶歇|自由活动/.test(name)) continue
-      try {
-        if (amapKey) {
-          const data = await amap('place/text', {
-            key: amapKey,
-            keywords: name,
-            city: cityHint,
-            offset: 5,
-            extensions: 'all',
-          })
-          const pois = Array.isArray(data.pois) ? data.pois : []
-          const hit = pois.find((p) => poiNameMatches(p.name, name) && p.biz_ext && p.biz_ext.cost)
-            || pois.find((p) => poiNameMatches(p.name, name))
-          if (hit) {
-            const price = formatTicketCost(hit.biz_ext && hit.biz_ext.cost)
-            if (price) {
-              slot.ticketPrice = price
-              used += 1
-              if (!slot.openingHours && hit.biz_ext) {
-                const open = hit.biz_ext.opentime || hit.biz_ext.open_time
-                if (open && String(open).trim() && String(open) !== '[]') {
-                  slot.openingHours = String(open).trim()
-                }
-              }
-              continue
-            }
-            const type = String(hit.type || '')
-            if (/风景名胜|景区|公园|博物馆|寺庙|文物/.test(type)) {
-              slot.ticketPrice = '门票以官方为准（高德暂无标价）'
-              used += 1
-              continue
-            }
-          }
-        }
-        if (tiandituKey && weakTicket(slot.ticketPrice)) {
-          const pois = await tdtSearchPoi(tiandituKey, name, cityHint)
-          const hit = pois.find((p) => poiNameMatches(p.name || p.hotPointID, name))
-          if (hit) {
-            // 天地图 POI 通常无票价字段，标待核实，避免空白误导
-            slot.ticketPrice = slot.ticketPrice || '门票以官方为准（天地图无标价）'
-            used += 1
-          }
-        }
-      } catch { /* skip */ }
+      jobs.push(slot)
     }
+    if (jobs.length >= MAX_TICKETS) break
   }
+  let used = 0
+  await mapPool(jobs, 6, async (slot) => {
+    try {
+      if (await fillTicket(slot, { amapKey, tiandituKey, cityHint })) used += 1
+    } catch { /* skip */ }
+  })
   if (used) {
     mergeSource(trip, {
       name: amapKey ? '高德地图' : '天地图',
@@ -384,35 +430,42 @@ export async function enrichTripTickets(trip, opts) {
  * opts 可为旧版字符串 amapKey，或 { amapKey, tiandituKey }。
  */
 export async function enrichTripTransport(trip, opts) {
-  const { amapKey, tiandituKey } = mapOpts(opts)
+  const { amapKey, tiandituKey, localOnly } = mapOpts(opts)
   const days = Array.isArray(trip.days) ? trip.days : []
-  let used = 0
-  let providerUsed = ''
+  const offline = localOnly || (!amapKey && !tiandituKey)
+  const jobs = []
   for (const day of days) {
     const slots = (day.slots || []).filter((s) => s && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)))
-    for (let i = 1; i < slots.length && used < MAX_LEGS; i += 1) {
-      const prev = slots[i - 1]
-      const cur = slots[i]
-      if (transportComplete(cur.transport)) continue
-      let leg = null
-      try {
-        if (amapKey) leg = await amapLeg(amapKey, prev, cur, trip.persona, trip.title)
-        else if (tiandituKey) leg = await tiandituLeg(tiandituKey, prev, cur, trip.persona)
-      } catch { leg = null }
-      if (!leg) leg = localLeg(prev, cur, trip.persona)
-      cur.transport = leg
-      providerUsed = leg.provider || providerUsed
-      used += 1
+    for (let i = 1; i < slots.length; i += 1) {
+      if (jobs.length >= MAX_LEGS) break
+      if (routeSettled(slots[i].transport)) continue
+      jobs.push({ prev: slots[i - 1], cur: slots[i] })
     }
+    if (jobs.length >= MAX_LEGS) break
   }
-  if (providerUsed === 'amap') {
-    mergeSource(trip, { name: '高德地图', scope: '路线规划（距离/耗时/公交与打车参考价）', realtime: true })
-  } else if (providerUsed === 'tianditu') {
-    mergeSource(trip, { name: '天地图', scope: '路线规划（距离/耗时/公交参考）；打车价为估算', realtime: true })
-  } else if (used) {
+  const seen = { amap: false, tianditu: false, local: false }
+  await mapPool(jobs, offline ? jobs.length || 1 : 6, async ({ prev, cur }) => {
+    let leg = null
+    try {
+      if (!offline && amapKey) leg = await amapLeg(amapKey, prev, cur, trip.persona, trip.title)
+      else if (!offline && tiandituKey) leg = await tiandituLeg(tiandituKey, prev, cur, trip.persona)
+    } catch { leg = null }
+    if (!leg) leg = localLeg(prev, cur, trip.persona)
+    cur.transport = leg
+    if (leg.provider === 'amap') seen.amap = true
+    else if (leg.provider === 'tianditu') seen.tianditu = true
+    else seen.local = true
+  })
+  if (seen.amap) mergeSource(trip, { name: '高德地图', scope: '路线规划（距离/耗时/公交与打车参考价）', realtime: true })
+  if (seen.tianditu) mergeSource(trip, { name: '天地图', scope: '路线规划（距离/耗时/公交参考）；打车价为估算', realtime: true })
+  if (seen.amap || seen.tianditu) {
+    trip.dataSources = (trip.dataSources || []).filter((s) => !s || s.name !== '本地路网估算')
+  } else if (seen.local) {
     mergeSource(trip, {
       name: '本地路网估算',
-      scope: '无地图 Key：按坐标直线距离估算步行/公交/打车，非实测路网',
+      scope: localOnly
+        ? '先按直线距离估算，路网结果随后替换'
+        : '无地图 Key：按坐标直线距离估算步行/公交/打车，非实测路网',
       realtime: false,
     })
   }

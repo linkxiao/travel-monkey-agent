@@ -1,0 +1,23 @@
+[Unit]
+Description=Travel Monkey
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/travel-monkey-agent
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=5177
+# EnvironmentFile=-/opt/travel-monkey-agent/.env
+ExecStart=/usr/bin/node server/prod.mjs
+Restart=on-failure
+RestartSec=3
+# 持久数据：确保下列路径可写（或挂盘到此）
+# server/.users.sqlite  data/shares  travel-assets/uploads
+
+LimitNOFILE=65535
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

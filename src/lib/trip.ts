@@ -1,4 +1,5 @@
 import { mentionedDays, resolveTargets } from './target.ts'
+import { wantsPhotos } from './photoIntent.ts'
 
 export type Trip = {
   title: string
@@ -185,69 +186,36 @@ export function looksLikeQuestion(text: string) {
   return /(吗|呢|累不累|远不远|怎么样|行不行)[。.!！]?$/.test(t) && !/改成|改为|换成|删掉|加上/.test(t)
 }
 
-export function wantsPhotos(text: string) {
-  return /图片|照片|图像|高清|大图|配图|换图|图换|附图|实拍|配.?图|线路图|路线图|缺图|同一张图|没有啊?，?请给出|补充.{0,8}图|补(张|一张|个)?.{0,6}图|没有.{0,16}图|换.{0,8}图|图.{0,4}(换|改|补)|把.{0,24}图|(优化|更新|美化|重配|重新配|调整).{0,12}图/.test(text)
-}
+// 配图意图：组合式信号模型，见 photoIntent.ts
+export {
+  type PhotoMode,
+  type PhotoRequest,
+  type PhotoSignals,
+  collectPhotoRequest,
+  composePhotoMode,
+  extractPhotoSignals,
+  explicitPhotoQuery,
+  interpretPhotoIntent,
+  interpretPhotoMode,
+  isPhotoAllFollowup,
+  isPhotoScopeClarify,
+  resolvePhotoIntent,
+  wantsAllPhotoScope,
+  wantsFullPhotoReplace,
+  wantsMissingPhotos,
+  wantsPhotos,
+  wantsReplacePhotos,
+  wantsRestPhotos,
+  wantsRoutePhotos,
+  wantsSpotPhotos,
+} from './photoIntent.ts'
 
 function slotNameParts(name: string) {
   return String(name || '').split(/[·・（(\/／|,，+|＋、\s]/).map((s) => s.trim()).filter((s) => s.length >= 2)
 }
 
-export function wantsRoutePhotos(text: string) {
-  return /线路图|路线图/.test(text) || (/线路/.test(text) && /图|缺|没/.test(text))
-}
-
-export function wantsRestPhotos(text: string) {
-  return /(午休|茶歇).{0,30}(图|同一|换|对应|都用)/.test(text) || /同一张图/.test(text)
-}
-
 export function namesInTrip(text: string, trip: Trip | null) {
   return resolveTargets(text, trip, { photoAsk: wantsPhotos(text) }).names
-}
-
-export function wantsSpotPhotos(text: string) {
-  return /景点.{0,12}(图|大图|配图|换图)|每日.{0,12}(景点)?(图|大图)|每天.{0,8}(景点)?(图|大图)|各[日天].{0,8}(景点)?(图|大图)/.test(text)
-}
-
-export function collectPhotoRequest(text: string, trip: Trip | null) {
-  const target = resolveTargets(text, trip, { photoAsk: wantsPhotos(text) })
-  const names = [...target.names]
-  const kinds: string[] = []
-  if (wantsRoutePhotos(text)) kinds.push('route')
-  if (wantsSpotPhotos(text) && !names.length) kinds.push('spot')
-  if (wantsRestPhotos(text) && trip) {
-    for (const day of (trip.days || []) as Day[]) {
-      for (const slot of day.slots || []) {
-        if (/午休|茶歇|休息|歇脚/.test(String(slot.name || ''))) names.push(String(slot.name || ''))
-      }
-    }
-  }
-  const scene = String(target.hint || '').match(/星空|夜观|夜景|银河|观星|日出|日落|云海|雪景|雾凇|晚霞|花海|夕阳|晨雾/g) || []
-  return {
-    names: [...new Set(names.filter(Boolean))],
-    kinds: [...new Set(kinds)],
-    hint: [...new Set(scene)].join(' '),
-    days: target.days,
-    query: explicitPhotoQuery(text),
-  }
-}
-
-// 用户自己给了检索词就照他说的搜：「去百度搜索「终南山扯袍峪人头山」然后换图」
-export function explicitPhotoQuery(text: string): string {
-  const t = String(text || '')
-  const quoted = t.match(/[「『“"']([^」』”"']{3,30})[」』”"']/)
-  if (quoted) {
-    const q = quoted[1].trim()
-    if (q && !/^(经济|中档|高端|参考)$/.test(q)) return q
-  }
-  const after = t.match(/(?:搜索|搜一下|搜|查)\s*[:：]?\s*([\u4e00-\u9fffA-Za-z0-9·\s]{3,30})/)
-  if (after) {
-    return after[1]
-      .replace(/(然后|再|并|之后|以后|即可|就行|抓取|替换|更换|换图|配图|图片|照片|的图|更新|优化)[\s\S]*$/, '')
-      .replace(/^(百度|抖音|小红书|点评|大众点评|网上|上|去|从)+/g, '')
-      .trim()
-  }
-  return ''
 }
 
 export function wantsPageSync(text: string) {

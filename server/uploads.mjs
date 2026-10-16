@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { applySecurityHeaders, rateLimit, requireLogin } from './guard.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UPLOAD_DIR = path.resolve(__dirname, '..', 'travel-assets', 'uploads')
@@ -36,11 +37,14 @@ function readBody(req, limit) {
 
 // 存成 travel-assets 下的本地文件：模具按本地图渲染，配图管线也不会再把它冲掉
 export async function handleUpload(req, res) {
+  applySecurityHeaders(res)
   const send = (code, obj) => {
     res.statusCode = code
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(obj))
   }
+  if (!rateLimit(req, res, { key: 'upload', max: 40 })) return
+  if (!requireLogin(req, res, '登录后才能上传').ok) return
   try {
     // base64 比原始字节大约 4/3，留足余量
     const raw = await readBody(req, Math.ceil(MAX_BYTES * 1.4))

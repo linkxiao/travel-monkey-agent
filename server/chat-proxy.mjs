@@ -3,6 +3,7 @@ import { applySkillSystem } from './skill-prompt.mjs'
 import { attachImages, loadImageForModel, MAX_IMAGES } from './images.mjs'
 import { dailyLimit, serverModel } from './config.mjs'
 import { bearerToken, refundQuota, takeQuota } from './users.mjs'
+import { applySecurityHeaders, assertPublicHttpsUrl, rateLimit, readJsonLimited } from './guard.mjs'
 
 dns.setDefaultResultOrder('ipv4first')
 
@@ -45,13 +46,13 @@ function parseUpstreamError(text) {
 }
 
 // 这家这个型号根本不长眼睛时，上游的话往往很含糊（甚至只说 400），得翻译成「换个认图的模型」
-const BLIND_MODELS = /deepseek-(chat|reasoner)|^deepseek-v3|^deepseek-r1|text-embedding|moonshot-v1-(8|32|128)k/i
+const BLIND_MODELS = /deepseek-(chat|reasoner|v4-pro)|^deepseek-v3|^deepseek-r1|text-embedding|moonshot-v1-(8|32|128)k/i
 
 function looksBlind(text) {
   return /image|vision|multimodal|multi-modal|image_url|不支持.*(图|视觉)|visual input|does not support.*(image|vision)|invalid.*content.*type/i.test(String(text || ''))
 }
 
-const VISION_PICKS = '可换成认图的模型：gpt-4o / claude-sonnet / gemini-2.x / qwen-vl-max / glm-4v / step-1v。'
+const VISION_PICKS = '可换成认图的模型：deepseek-flash / gpt-4o / claude-sonnet / gemini-2.x / qwen-vl-max / glm-4v / step-1v。'
 
 function formatError(err, provider, hadImages) {
   const parts = [err && err.message ? err.message : String(err)]
@@ -87,18 +88,7 @@ function formatError(err, provider, hadImages) {
 }
 
 function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', (c) => chunks.push(c))
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'))
-      } catch (err) {
-        reject(err)
-      }
-    })
-    req.on('error', reject)
-  })
+  return readJsonLimited(req, 8_000_000)
 }
 
 async function fetchUpstream(url, init, tries = 2) {
@@ -282,6 +272,16 @@ export function pickModel(body, token, modeName, { quota = takeQuota, server = s
       console.log(`[quota] ${modeName} 被拦下：${taken.error}`)
       throw new Error(taken.error)
     }
+    if (taken.unlimited) {
+      if (modeName !== 'route') console.log(`[quota] ${modeName} 白名单账号，不限次数`)
+      return {
+        provider: server.provider,
+        model: server.model,
+        apiKey: server.apiKey,
+        customBaseUrl: server.baseUrl,
+        quotaCharge: null,
+      }
+    }
     if (modeName !== 'route') console.log(`[quota] ${modeName} 预扣 1 次，今天已用 ${taken.used}/${taken.limit}（失败会退回）`)
     return {
       provider: server.provider,
@@ -303,6 +303,8 @@ export function pickModel(body, token, modeName, { quota = takeQuota, server = s
 }
 
 export async function handleChat(req, res) {
+  applySecurityHeaders(res)
+  if (!rateLimit(req, res, { key: 'chat', windowMs: 60_000, max: 45 })) return
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
@@ -334,7 +336,7 @@ export async function handleChat(req, res) {
       await streamAnthropic({ apiKey, model, messages }, res)
     } else {
       const baseUrl = provider === 'custom'
-        ? String(customBaseUrl || '').replace(/\/$/, '')
+        ? assertPublicHttpsUrl(customBaseUrl, '自定义 Base URL')
         : TARGETS[provider]
       if (!baseUrl) throw new Error('未知服务商或未填写自定义 Base URL')
       await streamOpenAI({ baseUrl, apiKey, model, messages, provider, mode: modeName }, res)

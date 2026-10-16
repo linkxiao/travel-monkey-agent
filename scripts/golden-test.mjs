@@ -5,9 +5,10 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import { dayBrief, normalizeTrip, tripTitle } from '../server/viz.mjs'
 import { askTitle, tripFromPlan } from '../src/lib/plan.ts'
+import { answeredAskKeys, extractAskItems, omitAnsweredAsks } from '../src/lib/ask.ts'
 import { researchQuery } from '../server/research.mjs'
 import { resolveTargets } from '../src/lib/target.ts'
-import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, photoOutcome, stripEditClaim, wantsPhotos, wantsTripEdit } from '../src/lib/trip.ts'
+import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, composePhotoMode, extractPhotoSignals, interpretPhotoIntent, interpretPhotoMode, isPhotoAllFollowup, isPhotoScopeClarify, photoOutcome, resolvePhotoIntent, stripEditClaim, wantsAllPhotoScope, wantsFullPhotoReplace, wantsMissingPhotos, wantsPhotos, wantsReplacePhotos, wantsSpotPhotos, wantsTripEdit } from '../src/lib/trip.ts'
 import { buildRouteMessages, carryLine, countPeople, isNewTask, localTurn, parseTurn, planPrefs, portablePrefs, statedDays, tripHead, tripNames } from '../src/lib/route.ts'
 import { mentionedDays } from '../src/lib/target.ts'
 import zlib from 'node:zlib'
@@ -16,17 +17,20 @@ import { readZip } from '../src/lib/zip.ts'
 import { buildChatMessages, buildFillMessages, buildPlanMessages, splitWindow, userPack } from '../src/lib/context.ts'
 import { isEmptySession, newSessionId, sessionStage, sessionTitle } from '../src/lib/session.ts'
 import { attachImages, loadImageForModel } from '../server/images.mjs'
-import { enrichTripPhotos } from '../server/photos.mjs'
+import { enrichTripPhotos, isPlaceholderPhoto } from '../server/photos.mjs'
 import { enrichTripTickets, enrichTripTransport } from '../server/transport.mjs'
 import { qualityChecklist } from '../server/quality.mjs'
 import { hoursIssues, parseOpenText } from '../server/hours.mjs'
 import net from 'node:net'
 import { loginUser, normalizeEmail, quotaLeft, refundQuota, registerUser, requestVerify, sessionUser, takeQuota } from '../server/users.mjs'
-import { dataKeys, publicConfig } from '../server/config.mjs'
-import { searchWeb } from '../server/search.mjs'
+import { dataKeys, isQuotaWhitelisted, publicConfig } from '../server/config.mjs'
+import { resetSearchAuth, searchWeb } from '../server/search.mjs'
+import { assertPublicHttpsUrl } from '../server/guard.mjs'
+import { requestOrigin } from '../server/share.mjs'
 import { pickModel } from '../server/chat-proxy.mjs'
 import { sendMail } from '../server/deliver.mjs'
 import { todayAdvice } from '../src/lib/today.ts'
+import { repairMobileChecklist } from '../src/lib/html.ts'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -115,6 +119,14 @@ const dayWith = (stay) => ({
   ok('换肤：模板里写死的深色字跟着皮肤走', /\.overview-day[^{]*\{color:var\(--ink\)!important\}/.test(css) && /\.craft-body[^{]*\{color:var\(--ink-mid\)!important\}/.test(css))
 }
 
+// 手机待办：旧会话也要补上明确网格区域，正文不能落进 20px 的勾选列。
+{
+  const old = '<!DOCTYPE html><html><head></head><body><li class="todo-item"><input type="checkbox"><span class="todo-deadline">2026-09-01前</span><span class="todo-text">确认往返交通</span></li></body></html>'
+  const fixed = repairMobileChecklist(old)
+  ok('手机待办：日期和正文有独立网格区域', fixed.includes('grid-template-areas:"check deadline" "check text"') && fixed.includes('grid-area:text!important'))
+  ok('手机待办：修复样式只注入一次', repairMobileChecklist(fixed) === fixed)
+}
+
 // 2. 三餐：软硬标签 + 旅居硬菜建议
 {
   const t = normalizeTrip({
@@ -198,6 +210,11 @@ const dayWith = (stay) => ({
     await enrichTripTickets(t4, 'K')
     ok('景点门票回填', /门票参考约 ¥400/.test(t4.days[0].slots[0].ticketPrice || ''))
     ok('景点营业时间顺带补', t4.days[0].slots[0].openingHours === '06:00-18:00')
+    const preview = { title: 'x', persona: 'stay', days: [{ slots: [mk(31.0, 121.4, 'A'), mk(31.01, 121.41, 'B')] }] }
+    await enrichTripTransport(preview, { localOnly: true })
+    ok('先出页用本地估算', preview.days[0].slots[1].transport.provider === 'local')
+    await enrichTripTransport(preview, 'K')
+    ok('随后升级成路网结果', preview.days[0].slots[1].transport.provider === 'amap' && preview.days[0].slots[1].transport.mode === '公交/地铁')
   } finally {
     globalThis.fetch = realFetch
   }
@@ -260,6 +277,25 @@ const dayWith = (stay) => ({
   ok('配图只收点名的天', JSON.stringify(req.days) === '[1,2]')
   ok('景点图只收景点格', req.names.length > 0 && !req.names.includes('一方小院') && !req.names.includes('农家饭'))
   ok('用户给的检索词收下', explicitPhotoQuery('请去百度上搜索"终南山扯袍峪人头山"然后抓取图片更换') === '终南山扯袍峪人头山')
+  // 意图模型：信号组合，而不是话术枚举
+  const clarify = '请点名哪一天或哪个景点要换图，避免把别的格子换错。'
+  ok('追问状态可识别', isPhotoScopeClarify(clarify))
+  const repairEx = ['换图', '图片不对', '为什么没有图片了？请为每一天补充对应的图片。', '优化day1的景点图片']
+  const overwriteEx = ['全部都换', '全部替换', '所有图都换']
+  ok('修复类→fill_gaps', repairEx.every((t) => composePhotoMode(extractPhotoSignals(t)) === 'fill_gaps'))
+  ok('全体覆盖类→replace', overwriteEx.every((t) => composePhotoMode(extractPhotoSignals(t)) === 'replace'))
+  ok('换图无全称≠覆盖', !wantsFullPhotoReplace('换图') && wantsFullPhotoReplace('全部都换'))
+  const gapAsk = '为什么没有图片了？请为每一天补充对应的图片。'
+  const allReq = resolvePhotoIntent(gapAsk, photoTrip)
+  ok('repair 扫整趟且不锁 kinds', allReq.mode === 'fill_gaps' && allReq.days.length === 3 && allReq.kinds.length === 0)
+  const followReq = resolvePhotoIntent('全部都换', photoTrip, { priorAsk: clarify })
+  ok('追问+全称短答→replace 整趟', followReq.mode === 'replace' && followReq.days.length === 3)
+  ok('信号：分配量词扩范围', extractPhotoSignals(gapAsk).distribute && wantsAllPhotoScope(gapAsk))
+  ok('信号：修复语义', extractPhotoSignals('图片不对').repair && extractPhotoSignals('补充缺图').repair)
+  ok('分流：配图走 photos', localTurn('', gapAsk, 3).action === 'photos' && localTurn('', '全部都换', 3).action === 'photos')
+  ok('占位图可识别', isPlaceholderPhoto('https://placehold.co/400x300/1a1410/c8943a?text=图片加载中') && isPlaceholderPhoto('') && !isPlaceholderPhoto('https://img0.baidu.com/it/u=1'))
+  ok('入口一致', collectPhotoRequest(gapAsk, photoTrip).mode === interpretPhotoIntent(gapAsk, photoTrip).mode)
+  ok('兼容旧 API', wantsMissingPhotos(gapAsk) && wantsReplacePhotos('全部都换') && isPhotoAllFollowup('全部都换') && wantsPhotos('全部都换') && wantsSpotPhotos('景点图片'))
 }
 // 8. 换图逐格收据：换上了说换上，搜不到说搜不到
 {
@@ -673,6 +709,27 @@ ok('密码太短注册不了', (await registerUser({ account: 'bing@example.com'
 ok('密码不对就登录不了', (await loginUser({ account: mail, password: otherPass, file })).error === '密码不对')
 const again = await loginUser({ account: mail, password: pass, file })
 ok('邮箱和密码对了就登录成功', again.ok && sessionUser(again.token, file).username === mail)
+{
+  const lockMail = 'lock@example.com'
+  const lockCode = await oneCode('register', lockMail)
+  ok('锁定账号能注册', (await registerUser({ account: lockMail, code: lockCode, password: pass, file })).ok)
+  for (let i = 0; i < 5; i += 1) await loginUser({ account: lockMail, password: 'wrong-password!!', file })
+  const locked = await loginUser({ account: lockMail, password: pass, file })
+  ok('登录失败多次后短暂锁定', !locked.ok && /过多|分钟/.test(String(locked.error || '')))
+}
+{
+  const prevWl = process.env.QUOTA_WHITELIST
+  process.env.QUOTA_WHITELIST = mail
+  ok('白名单识别邮箱', isQuotaWhitelisted(mail) && !isQuotaWhitelisted(other))
+  const wlNow = Date.now()
+  for (let i = 0; i < 20; i += 1) {
+    const t = takeQuota(again.token, 2, { file, now: wlNow })
+    if (!t.ok) throw new Error(`白名单仍被限额：${t.error}`)
+  }
+  ok('白名单账号不限模型次数', takeQuota(again.token, 2, { file, now: wlNow }).unlimited === true)
+  if (prevWl != null) process.env.QUOTA_WHITELIST = prevWl
+  else delete process.env.QUOTA_WHITELIST
+}
 ok('用过的验证码不能再注册', (await registerUser({ account: mail, code: mailCode, password: pass, file })).ok === false)
 ok('两个账号的登录状态互不串', sessionUser(second.token, file).username === other)
 const raw = fs.readFileSync(file, 'utf8')
@@ -680,11 +737,24 @@ ok('验证码和密码不明文落在数据库', raw.startsWith('SQLite format 3
 
 const askPlan = '人格：旅居\nD1 2026-10-12：岚山 / 竹林 / 午休 / 天龙寺 / 住岚山 / 早·A / 午·B / 晚·C\n住宿片区：岚山\n待确认：\n1. 樱花季具体日期定了吗？花期决定岚山与奈良公园哪天去。\n答案：A.定了 B.没定'
 ok('大纲兜底标题不拿待确认问句', tripFromPlan(askPlan).title === '1 日行程')
-ok('大纲兜底标题用用户第一句话', tripFromPlan(askPlan, '京都、奈良5天4晚、两人，偏寺庙、樱花、咖啡和人文古迹和，住町屋').title === '京都奈良 5 日 · 寺庙与樱花')
+{
+  const again = extractAskItems(askPlan)
+  const keys = answeredAskKeys('对以下问题的答复（按选项写入，不要再追问同一批）：\n1. 樱花季具体日期定了吗？花期决定岚山与奈良公园哪天去。\n→ A.定了')
+  ok('答过的确认题不再抽成卡片', omitAnsweredAsks(again, keys).length === 0 && again.length === 1)
+}
+ok('大纲兜底标题用用户第一句话', tripFromPlan(askPlan, '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋').title === '京都奈良 5 日 · 寺院与樱花')
 ok('第一句话标题：目的地带周边、主题取前两项', askTitle('深圳周边3天2晚、一家三口，偏亲子与海边，住较场尾', 3) === '深圳周边 3 日 · 亲子与海边')
 ok('第一句话认不出目的地就不硬凑', askTitle('帮我规划一下下个月出去玩的行程，想轻松一点的那种安排', 2) === '')
 ok('模型写成问句的标题会被换掉', tripTitle({ title: '1. 樱花季具体日期定了吗？', days: [{ theme: '京都岚山' }, { theme: '奈良' }] }) === '京都 2 日行程')
 ok('正常标题原样保留', tripTitle({ title: '京都奈良 5 日寺社之旅', days: [{}] }) === '京都奈良 5 日寺社之旅')
+ok('住宿三档长文不当标题', [...tripTitle({
+  title: '南京·新街口片区——经济：汉庭酒店（南京新街口店）；中档：亚朵酒店；高端：南京丽思卡尔顿酒店。',
+  days: [{ theme: '南京新街口' }, { theme: '夫子庙' }, { theme: '栖霞山' }, { theme: '老门东' }, { theme: '返程' }],
+})].length <= 30 && !/经济\s*[：:]/.test(tripTitle({
+  title: '南京·新街口片区——经济：汉庭酒店（南京新街口店）；中档：亚朵酒店；高端：南京丽思卡尔顿酒店。',
+  days: [{ theme: '南京新街口' }, { theme: '夫子庙' }, { theme: '栖霞山' }, { theme: '老门东' }, { theme: '返程' }],
+})))
+ok('超长标题截到30字内', [...tripTitle({ title: '这是一段远远超过三十个汉字限制的旅行封面大标题测试用例内容', days: [{ theme: '甲' }] })].length <= 30)
 
 const noon = Date.parse('2026-10-11T04:00:00Z')
 ok('没登录不能用服务端模型', takeQuota('', 2, { file, now: noon }).ok === false)
@@ -751,6 +821,56 @@ for (const key of ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY', 'AMAP_KEY', 'TIAN
   })
   globalThis.fetch = origFetch
   ok('博查失败自动回退 Tavily', hits.length === 1 && hits[0].title === '备用命中' && called.some((u) => u.includes('bochaai')) && called.some((u) => u.includes('tavily')))
+}
+
+{
+  resetSearchAuth()
+  const origFetch = globalThis.fetch
+  const called = []
+  globalThis.fetch = async (url) => {
+    const u = String(url)
+    called.push(u)
+    if (u.includes('bochaai')) {
+      return { ok: false, status: 401, json: async () => ({ message: 'Invalid API KEY' }) }
+    }
+    if (u.includes('tavily')) {
+      return { ok: true, status: 200, json: async () => ({ results: [{ title: '备用命中', content: 'ok', url: 'https://example.com' }] }) }
+    }
+    return { ok: false, status: 500, json: async () => ({}) }
+  }
+  const opts = {
+    searchKey: 'bocha-invalid',
+    searchProvider: 'bocha',
+    searchFallbackKey: 'tavily-key',
+    searchFallbackProvider: 'tavily',
+  }
+  const [flights, hotels, local] = await Promise.all([
+    searchWeb('机票', opts),
+    searchWeb('酒店', opts),
+    searchWeb('时令', opts),
+  ])
+  const again = await searchWeb('再查一次', opts)
+  globalThis.fetch = origFetch
+  resetSearchAuth()
+  const bochaCalls = called.filter((u) => u.includes('bochaai')).length
+  const tavilyCalls = called.filter((u) => u.includes('tavily')).length
+  ok('无效博查密钥只探测一次，三路改走备用', bochaCalls === 1 && tavilyCalls === 4 && [flights, hotels, local, again].every((hits) => hits[0]?.title === '备用命中'))
+}
+
+ok('自定义 Base URL 拦内网', (() => { try { assertPublicHttpsUrl('http://169.254.169.254/latest'); return false } catch { return true } })())
+ok('自定义 Base URL 放行公网 https', assertPublicHttpsUrl('https://api.deepseek.com/v1') === 'https://api.deepseek.com/v1')
+{
+  const prev = process.env.PUBLIC_BASE_URL
+  const prevTrust = process.env.TRUST_PROXY
+  process.env.PUBLIC_BASE_URL = 'https://trip.example.com'
+  delete process.env.TRUST_PROXY
+  ok('分享域名优先用 PUBLIC_BASE_URL', requestOrigin({ headers: { host: 'evil.test', 'x-forwarded-host': 'phish.test' } }) === 'https://trip.example.com')
+  delete process.env.PUBLIC_BASE_URL
+  ok('未开 TRUST_PROXY 时不信 X-Forwarded-Host', requestOrigin({ headers: { host: 'real.test', 'x-forwarded-host': 'phish.test', 'x-forwarded-proto': 'https' } }) === 'http://real.test')
+  if (prev != null) process.env.PUBLIC_BASE_URL = prev
+  else delete process.env.PUBLIC_BASE_URL
+  if (prevTrust != null) process.env.TRUST_PROXY = prevTrust
+  else delete process.env.TRUST_PROXY
 }
 
 const smtp = await new Promise((resolve) => {

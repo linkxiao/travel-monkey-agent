@@ -15,3 +15,4 @@ server/.users.sqlite-wal
 server/.users.sqlite-shm
 travel-assets/uploads/*
 !travel-assets/uploads/.gitkeep
+data/shares/

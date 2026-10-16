@@ -1,4 +1,5 @@
 import { readZip } from './zip.ts'
+import { authHeaders } from './http.ts'
 
 export type Attachment =
   | { kind: 'image'; name: string; url: string; bytes: number }
@@ -48,10 +49,10 @@ function toDataUrl(bytes: Uint8Array, mime: string) {
   return `data:${mime};base64,${btoa(s)}`
 }
 
-async function upload(name: string, data: string, fallbackBytes: number): Promise<Attachment> {
+async function upload(name: string, data: string, fallbackBytes: number, authToken?: string): Promise<Attachment> {
   const res = await fetch('/api/upload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(authToken, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ name, data }),
   })
   const out = await res.json().catch(() => ({ error: `上传失败 ${res.status}` }))
@@ -61,7 +62,7 @@ async function upload(name: string, data: string, fallbackBytes: number): Promis
 
 // zip 当成「一包资料」：里面的文本读成资料，图片照常存进 travel-assets。
 // 一个压缩包可能产出多条附件，所以统一返回数组。
-async function readZipAttachments(file: File): Promise<Attachment[]> {
+async function readZipAttachments(file: File, authToken?: string): Promise<Attachment[]> {
   const entries = await readZip(file, { maxEntries: 20 })
   if (!entries.length) throw new Error(`「${file.name}」里没有能用的文件（只认文本和图片）。`)
   const out: Attachment[] = []
@@ -74,7 +75,7 @@ async function readZipAttachments(file: File): Promise<Attachment[]> {
     const ext = (short.split('.').pop() || '').toLowerCase()
     if (IMAGE_EXT.test(short)) {
       const mime = MIME_BY_EXT[ext] || 'image/png'
-      out.push(await upload(short, toDataUrl(entry.bytes, mime), entry.bytes.length))
+      out.push(await upload(short, toDataUrl(entry.bytes, mime), entry.bytes.length, authToken))
       continue
     }
     if (TEXT_EXT.test(short) && textBudget > 0) {
@@ -95,11 +96,11 @@ async function readZipAttachments(file: File): Promise<Attachment[]> {
 // 图片存到本机 travel-assets 下（模具认本地图，也不会被配图管线冲掉）；
 // 文本类直接读成字符串，发给模型当资料；zip 拆开后按上面两条处理。
 // 其余类型明确拒收，不假装收下。
-export async function readAttachments(file: File): Promise<Attachment[]> {
+export async function readAttachments(file: File, authToken?: string): Promise<Attachment[]> {
   if (file.type.startsWith('image/')) {
-    return [await upload(file.name, await readAsDataUrl(file), file.size)]
+    return [await upload(file.name, await readAsDataUrl(file), file.size, authToken)]
   }
-  if (isZipFile(file)) return readZipAttachments(file)
+  if (isZipFile(file)) return readZipAttachments(file, authToken)
   if (isTextFile(file)) {
     const text = (await file.text()).slice(0, MAX_TEXT)
     if (!text.trim()) throw new Error(`「${file.name}」是空的`)

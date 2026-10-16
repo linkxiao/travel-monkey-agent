@@ -1,0 +1,1499 @@
+{
+  "title": "甘南6天5晚•夏河、桑科、扎尕那星空探秘",
+  "startDate": "2026-07-10",
+  "persona": "trek",
+  "disclaimer": "本行程依据公开攻略与线路库整理，非实测踩线；开放时间、路况、票价与天气以出行当日官方信息为准，坐标待核实。",
+  "preTrip": {
+    "weather": {
+      "summary": "甘南7月白天约15-25℃，早晚5-10℃，昼夜温差大，午后多阵雨，紫外线强。",
+      "typhoon": "内陆高原无台风影响，但需关注短时强降雨与山区落石。"
+    },
+    "transport": "抵达夏河后可包车或自驾；夏河→桑科约30分钟，夏河→合作约1小时，合作→扎尕那车程较长建议早出发；县城内步行或打车。",
+    "packing": "冲锋衣、抓绒、速干衣、徒步鞋、防晒帽、墨镜、防晒霜、雨衣、头灯、保温杯、常用药、氧气罐（备用）、干粮。",
+    "payment": "县城多支持微信/支付宝，草原与村内信号弱，备少量现金。",
+    "apps": [
+      "高德地图",
+      "航旅纵横"
+    ],
+    "ticketTip": "拉卜楞寺、米拉日巴佛阁、扎尕那等门票与观光车政策以现场为准，学生/老人证件可备。"
+  },
+  "flights": {
+    "booked": [],
+    "candidates": []
+  },
+  "hotelAreas": [
+    {
+      "area": "夏河县城（拉卜楞寺外围街区）",
+      "options": [
+        {
+          "tier": "高端",
+          "name": "夏河拉卜楞民航大酒店",
+          "note": "县城主街，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          },
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D2355834143%2C550459575%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D747%26h%3D500"
+        }
+      ],
+      "reason": ""
+    },
+    {
+      "area": "合作市（当周街一带）",
+      "options": [
+        {
+          "tier": "经济",
+          "name": "合作雪域宾馆",
+          "note": "当周街附近，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        },
+        {
+          "tier": "中档",
+          "name": "合作甘南饭店",
+          "note": "市中心，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        },
+        {
+          "tier": "高端",
+          "name": "合作香巴拉大酒店",
+          "note": "市区主干道，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        }
+      ],
+      "reason": ""
+    },
+    {
+      "area": "扎尕那（业日村一带）／迭部县城",
+      "options": [
+        {
+          "tier": "中档",
+          "name": "迭部扎尕那假日酒店",
+          "note": "村口方向，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        },
+        {
+          "tier": "高端",
+          "name": "迭部县城宾馆",
+          "note": "县城中心，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        }
+      ],
+      "reason": ""
+    },
+    {
+      "area": "郎木寺镇／碌曲县城",
+      "options": [
+        {
+          "tier": "中档",
+          "name": "郎木寺宾馆",
+          "note": "镇中心，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        },
+        {
+          "tier": "高端",
+          "name": "碌曲县城酒店",
+          "note": "县城主街，参考",
+          "priceRange": "参考价，出发前核实",
+          "access": {
+            "note": "出山：近出山/主干道一侧（以实际路况为准）",
+            "status": "待核实"
+          }
+        }
+      ],
+      "reason": ""
+    }
+  ],
+  "tips": [
+    "按探秘节奏：写清值不值得、难度与补给。",
+    "两人轻装徒步，扎尕那石林方向难度3星，量力而行，带足水与干粮。",
+    "草原与村内补给少，进草原前在夏河或合作县城备好水和食物。",
+    "星空拍摄注意保暖与头灯，草原夜间勿单独远离车辆。",
+    "寺庙与转经道尊重当地习俗，不随意拍摄僧人。",
+    "探秘：走完再住，近出山/主干道一侧。"
+  ],
+  "reminders": [
+    {
+      "item": "确认往返大交通与夏河/合作接驳",
+      "leadDays": 7
+    },
+    {
+      "item": "预订夏河、合作、扎尕那、郎木寺住宿",
+      "leadDays": 7
+    },
+    {
+      "item": "备齐徒步装备与常用药",
+      "leadDays": 7
+    },
+    {
+      "item": "关注甘南天气与路况，确认扎尕那进山情况",
+      "leadDays": 7
+    }
+  ],
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-07-10",
+      "title": "抵达夏河·拉卜楞寺·桑科草原日落星空",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "抵达夏河县城",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "抵达后先到县城安顿，适应海拔，轻装出行。",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "拉卜楞寺",
+          "time": "下午",
+          "period": "下午",
+          "lat": 35.195,
+          "lng": 102.508,
+          "review": "人文核心，转经道慢走，注意开放时间与礼仪。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D3152138564%2C205193750%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D800%26h%3D1024",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D3152138564%2C205193750%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D800%26h%3D1024"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费；打车约 ¥13",
+            "duration": "约 10 分钟",
+            "distance": "约 859 米",
+            "meters": 859,
+            "taxiYuan": 13,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E6%8A%B5%E8%BE%BE%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&to=102.508,35.195,%E6%8B%89%E5%8D%9C%E6%A5%9E%E5%AF%BA&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "桑科草原",
+          "time": "傍晚",
+          "period": "傍晚",
+          "lat": 35.083,
+          "lng": 102.45,
+          "review": "日落与星空，车到草原边即停，草原边取车返县城。",
+          "ticketPrice": "",
+          "cuttable": true,
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2655968854%2C3577407740%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2655968854%2C3577407740%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥39",
+            "duration": "约 1.5 小时",
+            "distance": "约 14 公里",
+            "meters": 13525,
+            "taxiYuan": 39,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.508,35.195,%E6%8B%89%E5%8D%9C%E6%A5%9E%E5%AF%BA&to=102.45,35.083,%E6%A1%91%E7%A7%91%E8%8D%89%E5%8E%9F&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "夏河县城转经道外围",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 35.2,
+          "lng": 102.51,
+          "review": "若天气不佳可改此处慢走，感受县城夜色。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥41",
+            "duration": "约 1.6 小时",
+            "distance": "约 14 公里",
+            "meters": 14107,
+            "taxiYuan": 41,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.45,35.083,%E6%A1%91%E7%A7%91%E8%8D%89%E5%8E%9F&to=102.51,35.2,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%BD%AC%E7%BB%8F%E9%81%93%E5%A4%96%E5%9B%B4&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住夏河县城",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "县城住宿方便出山，参考片区：拉卜楞寺外围街区。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "约 3 分钟",
+            "distance": "约 287 米",
+            "meters": 287,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.51,35.2,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%BD%AC%E7%BB%8F%E9%81%93%E5%A4%96%E5%9B%B4&to=102.512,35.202,%E4%BD%8F%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚餐·夏河县城清真小馆",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "与晚餐place对齐。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E4%BD%8F%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&to=102.512,35.202,%E6%99%9A%E9%A4%90%C2%B7%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E6%B8%85%E7%9C%9F%E5%B0%8F%E9%A6%86&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "自理",
+          "hours": "参考",
+          "note": "出发前或路上解决。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "自理",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fzh%2F4%2F41%2F%25E6%2589%258D%25E5%25A5%25B3%25E7%259A%2584%25E4%25BE%258D%25E5%25BE%259E_%25E5%259C%25A8%25E6%25BB%25BF%25E6%2598%25AF%25E9%25AB%2598%25E5%25B6%25BA%25E4%25B9%258B%25E8%258A%25B1%25E7%259A%2584%25E8%25B2%25B4%25E6%2597%258F%25E5%25AD%25B8%25E6%25A0%25A1_%25E6%259A%2597%25E4%25B8%25AD%25E7%2585%25A7%25E9%25A1%25A7%25EF%25BC%2588%25E6%25AF%25AB%25E7%2584%25A1%25E7%2594%259F%25E6%25B4%25BB%25E8%2587%25AA%25E7%2590%2586%25E8%2583%25BD%25E5%258A%259B%25E7%259A%2584%25EF%25BC%2589%25E5%25AD%25B8%25E9%2599%25A2%25E7%25AC%25AC%25E4%25B8%2580%25E5%25A4%25A7%25E5%25B0%258F%25E5%25A7%2590.jpg%3Futm_source%3Dzh.wikipedia.org%26utm_campaign%3Dapi%26utm_content%3Dthumbnail_unscaled"
+        },
+        {
+          "meal": "午餐",
+          "place": "夏河县城藏餐",
+          "hours": "参考",
+          "note": "县城补给方便。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "面片",
+              "price": "参考"
+            },
+            {
+              "name": "酥油茶",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "夏河县城清真小馆",
+          "hours": "参考",
+          "note": "与第6格food对齐。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "手抓羊肉",
+              "price": "参考"
+            },
+            {
+              "name": "面食",
+              "price": "参考"
+            }
+          ]
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "轻",
+          "walk": "约3-5公里",
+          "why": "抵达适应为主，转经道慢走。"
+        },
+        "rain": {
+          "cut": "桑科草原露天段",
+          "keep": "拉卜楞寺外围与县城",
+          "instead": "县城茶歇"
+        },
+        "park": {
+          "leave": "夏河县城停车",
+          "then": "桑科包车或自驾前往",
+          "pickup": "草原边取车返县城"
+        }
+      },
+      "weekday": "周五",
+      "theme": "第 1 天",
+      "brief": "拉卜楞寺·桑科草原·夏河县城转经道外围"
+    },
+    {
+      "day": 2,
+      "date": "2026-07-11",
+      "title": "夏河→合作·米拉日巴佛阁·城区人文",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "夏河→合作",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "约1小时车程，县城停车后市区步行或打车。",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "米拉日巴佛阁",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "人文地标，注意开放时间。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2110446438%2C972658284%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D2110446438%2C972658284%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D653"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.91,35,%E5%A4%8F%E6%B2%B3%E2%86%92%E5%90%88%E4%BD%9C&to=102.91,35,%E7%B1%B3%E6%8B%89%E6%97%A5%E5%B7%B4%E4%BD%9B%E9%98%81&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "合作城区人文闲逛",
+          "time": "下午",
+          "period": "下午",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "市区慢走，感受当地生活。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.91,35,%E7%B1%B3%E6%8B%89%E6%97%A5%E5%B7%B4%E4%BD%9B%E9%98%81&to=102.91,35,%E5%90%88%E4%BD%9C%E5%9F%8E%E5%8C%BA%E4%BA%BA%E6%96%87%E9%97%B2%E9%80%9B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "合作当周街一带",
+          "time": "傍晚",
+          "period": "傍晚",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "补给与闲逛，适老少走路。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.91,35,%E5%90%88%E4%BD%9C%E5%9F%8E%E5%8C%BA%E4%BA%BA%E6%96%87%E9%97%B2%E9%80%9B&to=102.91,35,%E5%90%88%E4%BD%9C%E5%BD%93%E5%91%A8%E8%A1%97%E4%B8%80%E5%B8%A6&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住合作县城",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "参考片区：当周街一带。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.91,35,%E5%90%88%E4%BD%9C%E5%BD%93%E5%91%A8%E8%A1%97%E4%B8%80%E5%B8%A6&to=102.91,35,%E4%BD%8F%E5%90%88%E4%BD%9C%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚餐·合作县城川菜小馆",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 35,
+          "lng": 102.91,
+          "review": "与晚餐place对齐。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.91,35,%E4%BD%8F%E5%90%88%E4%BD%9C%E5%8E%BF%E5%9F%8E&to=102.91,35,%E6%99%9A%E9%A4%90%C2%B7%E5%90%88%E4%BD%9C%E5%8E%BF%E5%9F%8E%E5%B7%9D%E8%8F%9C%E5%B0%8F%E9%A6%86&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "合作县城",
+          "hours": "参考",
+          "note": "县城早餐。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "包子",
+              "price": "参考"
+            },
+            {
+              "name": "粥",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "合作县城藏餐",
+          "hours": "参考",
+          "note": "县城补给。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "藏面",
+              "price": "参考"
+            },
+            {
+              "name": "牦牛肉",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "合作县城川菜小馆",
+          "hours": "参考",
+          "note": "与第6格food对齐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "小炒肉",
+              "price": "参考"
+            },
+            {
+              "name": "时蔬",
+              "price": "参考"
+            }
+          ]
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "轻",
+          "walk": "约3-4公里",
+          "why": "城区闲逛为主。"
+        },
+        "rain": {
+          "cut": "佛阁外围露天段",
+          "keep": "佛阁内部与城区",
+          "instead": "茶馆"
+        },
+        "park": {
+          "leave": "合作县城停车",
+          "then": "市区步行或打车",
+          "pickup": "返回停车点"
+        }
+      },
+      "weekday": "周六",
+      "theme": "第 2 天",
+      "brief": "米拉日巴佛阁·合作城区人文闲逛"
+    },
+    {
+      "day": 3,
+      "date": "2026-07-12",
+      "title": "合作→扎尕那·石林方向徒步",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "合作→扎尕那",
+          "time": "上午",
+          "period": "上午",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "车程较长，早出发，村口停车后徒步进出。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D4267608919%2C498584193%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg1.baidu.com%2Fit%2Fu%3D4267608919%2C498584193%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D667"
+          ]
+        },
+        {
+          "kind": "spot",
+          "name": "扎尕那徒步（业日村—石林方向）",
+          "time": "上午",
+          "period": "上午",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "难度3星，值得，量力而行。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D2852723781%2C209586270%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D875",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D2852723781%2C209586270%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D500%26h%3D875"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E5%90%88%E4%BD%9C%E2%86%92%E6%89%8E%E5%B0%95%E9%82%A3&to=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E5%BE%92%E6%AD%A5%EF%BC%88%E4%B8%9A%E6%97%A5%E6%9D%91%E2%80%94%E7%9F%B3%E6%9E%97%E6%96%B9%E5%90%91%EF%BC%89&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "扎尕那村内午休",
+          "time": "中午",
+          "period": "中午",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "村内简餐，补给少，自带干粮。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E5%BE%92%E6%AD%A5%EF%BC%88%E4%B8%9A%E6%97%A5%E6%9D%91%E2%80%94%E7%9F%B3%E6%9E%97%E6%96%B9%E5%90%91%EF%BC%89&to=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E6%9D%91%E5%86%85%E5%8D%88%E4%BC%91&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "扎尕那观景台",
+          "time": "下午",
+          "period": "下午",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "若体力允许，观景台看全景。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D2936189966%2C614582547%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D800%26h%3D1044",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D2936189966%2C614582547%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D800%26h%3D1044"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E6%9D%91%E5%86%85%E5%8D%88%E4%BC%91&to=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E8%A7%82%E6%99%AF%E5%8F%B0&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住扎尕那村内",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "看晨雾，补给少，参考片区：业日村一带。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E8%A7%82%E6%99%AF%E5%8F%B0&to=103.2,34.23,%E4%BD%8F%E6%89%8E%E5%B0%95%E9%82%A3%E6%9D%91%E5%86%85&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚餐·扎尕那村内或迭部县城",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "与晚餐place对齐。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D503144899%2C2162735134%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D667%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D503144899%2C2162735134%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D667%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E4%BD%8F%E6%89%8E%E5%B0%95%E9%82%A3%E6%9D%91%E5%86%85&to=103.2,34.23,%E6%99%9A%E9%A4%90%C2%B7%E6%89%8E%E5%B0%95%E9%82%A3%E6%9D%91%E5%86%85%E6%88%96%E8%BF%AD%E9%83%A8%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "合作县城",
+          "hours": "参考",
+          "note": "出发前吃饱。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "包子",
+              "price": "参考"
+            },
+            {
+              "name": "豆浆",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "扎尕那村内简餐",
+          "hours": "参考",
+          "note": "补给少，自带干粮。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "面片",
+              "price": "参考"
+            },
+            {
+              "name": "干粮",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "扎尕那村内或迭部县城",
+          "hours": "参考",
+          "note": "与第6格food对齐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "牦牛肉",
+              "price": "参考"
+            },
+            {
+              "name": "时蔬",
+              "price": "参考"
+            }
+          ]
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "偏累",
+          "walk": "约8-12公里",
+          "why": "石林方向徒步，难度3星。"
+        },
+        "rain": {
+          "cut": "石林高处段",
+          "keep": "村内与观景台",
+          "instead": "村内茶歇"
+        },
+        "park": {
+          "leave": "扎尕那村口停车",
+          "then": "徒步进出",
+          "pickup": "返程取车"
+        }
+      },
+      "weekday": "周日",
+      "theme": "第 3 天",
+      "brief": "扎尕那徒步（业日村—石林方向）"
+    },
+    {
+      "day": 4,
+      "date": "2026-07-13",
+      "title": "扎尕那晨雾日出·郎木寺",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "扎尕那晨雾与日出",
+          "time": "清晨",
+          "period": "清晨",
+          "lat": 34.23,
+          "lng": 103.2,
+          "review": "早起看晨雾，注意保暖。",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "扎尕那→郎木寺",
+          "time": "上午",
+          "period": "上午",
+          "lat": 34.09,
+          "lng": 102.63,
+          "review": "二选一选郎木寺，沿途草原风光。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "自驾/包车",
+            "fare": "打车约 ¥142（油费过路另计）",
+            "duration": "约 55 分钟",
+            "distance": "约 55 公里",
+            "meters": 54708,
+            "taxiYuan": 142,
+            "intercity": true,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=103.2,34.23,%E6%89%8E%E5%B0%95%E9%82%A3%E6%99%A8%E9%9B%BE%E4%B8%8E%E6%97%A5%E5%87%BA&to=102.63,34.09,%E6%89%8E%E5%B0%95%E9%82%A3%E2%86%92%E9%83%8E%E6%9C%A8%E5%AF%BA&mode=car&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "郎木寺镇",
+          "time": "下午",
+          "period": "下午",
+          "lat": 34.09,
+          "lng": 102.63,
+          "review": "镇内人文与自然结合，景区门口上下车。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1714168717%2C3091420626%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1714168717%2C3091420626%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D686%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.63,34.09,%E6%89%8E%E5%B0%95%E9%82%A3%E2%86%92%E9%83%8E%E6%9C%A8%E5%AF%BA&to=102.63,34.09,%E9%83%8E%E6%9C%A8%E5%AF%BA%E9%95%87&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "郎木寺周边草原",
+          "time": "傍晚",
+          "period": "傍晚",
+          "lat": 34.09,
+          "lng": 102.63,
+          "review": "若天气好可看日落。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.63,34.09,%E9%83%8E%E6%9C%A8%E5%AF%BA%E9%95%87&to=102.63,34.09,%E9%83%8E%E6%9C%A8%E5%AF%BA%E5%91%A8%E8%BE%B9%E8%8D%89%E5%8E%9F&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住郎木寺或碌曲县城",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 34.09,
+          "lng": 102.63,
+          "review": "参考片区：郎木寺镇／碌曲县城。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.63,34.09,%E9%83%8E%E6%9C%A8%E5%AF%BA%E5%91%A8%E8%BE%B9%E8%8D%89%E5%8E%9F&to=102.63,34.09,%E4%BD%8F%E9%83%8E%E6%9C%A8%E5%AF%BA%E6%88%96%E7%A2%8C%E6%9B%B2%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚餐·郎木寺或碌曲县城",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 34.09,
+          "lng": 102.63,
+          "review": "与晚餐place对齐。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D503144899%2C2162735134%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D667%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg0.baidu.com%2Fit%2Fu%3D503144899%2C2162735134%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D667%26h%3D500"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.63,34.09,%E4%BD%8F%E9%83%8E%E6%9C%A8%E5%AF%BA%E6%88%96%E7%A2%8C%E6%9B%B2%E5%8E%BF%E5%9F%8E&to=102.63,34.09,%E6%99%9A%E9%A4%90%C2%B7%E9%83%8E%E6%9C%A8%E5%AF%BA%E6%88%96%E7%A2%8C%E6%9B%B2%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "扎尕那村内",
+          "hours": "参考",
+          "note": "村内早餐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "糌粑",
+              "price": "参考"
+            },
+            {
+              "name": "酥油茶",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "沿途县城",
+          "hours": "参考",
+          "note": "路上补给。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "面食",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "郎木寺或碌曲县城",
+          "hours": "参考",
+          "note": "与第6格food对齐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "藏餐",
+              "price": "参考"
+            },
+            {
+              "name": "川菜",
+              "price": "参考"
+            }
+          ]
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "中",
+          "walk": "约4-6公里",
+          "why": "晨雾后转场，镇内慢走。"
+        },
+        "rain": {
+          "cut": "尕海湖露天段",
+          "keep": "郎木寺镇内",
+          "instead": "镇内茶馆"
+        },
+        "park": {
+          "leave": "郎木寺或碌曲县城停车",
+          "then": "景区门口上下车",
+          "pickup": "返回停车点"
+        }
+      },
+      "weekday": "周一",
+      "theme": "第 4 天",
+      "brief": "扎尕那→郎木寺·郎木寺镇·郎木寺周边草原"
+    },
+    {
+      "day": 5,
+      "date": "2026-07-14",
+      "title": "郎木寺→夏河·沿途草原星空",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "郎木寺或碌曲→夏河",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "沿途草原风光，夏河县城停车。",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "沿途草原",
+          "time": "下午",
+          "period": "下午",
+          "lat": 35.1,
+          "lng": 102.5,
+          "review": "草原慢走，注意天气。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥34",
+            "duration": "约 1.3 小时",
+            "distance": "约 11 公里",
+            "meters": 11394,
+            "taxiYuan": 34,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E9%83%8E%E6%9C%A8%E5%AF%BA%E6%88%96%E7%A2%8C%E6%9B%B2%E2%86%92%E5%A4%8F%E6%B2%B3&to=102.5,35.1,%E6%B2%BF%E9%80%94%E8%8D%89%E5%8E%9F&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "夏河县城茶歇",
+          "time": "傍晚",
+          "period": "傍晚",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "若天气不佳改县城茶歇。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥34",
+            "duration": "约 1.3 小时",
+            "distance": "约 11 公里",
+            "meters": 11394,
+            "taxiYuan": 34,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.5,35.1,%E6%B2%BF%E9%80%94%E8%8D%89%E5%8E%9F&to=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%8C%B6%E6%AD%87&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "草原星空",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 35.083,
+          "lng": 102.45,
+          "review": "草原段包车往返，注意保暖。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3098169734%2C2838667270%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D749%26h%3D500",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3098169734%2C2838667270%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D749%26h%3D500"
+          ],
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥41",
+            "duration": "约 1.6 小时",
+            "distance": "约 14 公里",
+            "meters": 14383,
+            "taxiYuan": 41,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%8C%B6%E6%AD%87&to=102.45,35.083,%E8%8D%89%E5%8E%9F%E6%98%9F%E7%A9%BA&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "stay",
+          "name": "住夏河县城",
+          "time": "夜间",
+          "period": "夜间",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "参考片区：拉卜楞寺外围街区。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "公交/地铁",
+            "fare": "公交参考；打车约 ¥41",
+            "duration": "约 1.6 小时",
+            "distance": "约 14 公里",
+            "meters": 14383,
+            "taxiYuan": 41,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.45,35.083,%E8%8D%89%E5%8E%9F%E6%98%9F%E7%A9%BA&to=102.512,35.202,%E4%BD%8F%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&mode=bus&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "晚餐·夏河县城",
+          "time": "晚上",
+          "period": "晚上",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "与晚餐place对齐。",
+          "ticketPrice": "",
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1997042162%2C2793418805%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D800%26h%3D1067",
+          "photos": [
+            "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D1997042162%2C2793418805%26fm%3D253%26fmt%3Dauto%26app%3D138%26f%3DJPEG%3Fw%3D800%26h%3D1067"
+          ],
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E4%BD%8F%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&to=102.512,35.202,%E6%99%9A%E9%A4%90%C2%B7%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "郎木寺或碌曲县城",
+          "hours": "参考",
+          "note": "出发前早餐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "包子",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "午餐",
+          "place": "沿途县城",
+          "hours": "参考",
+          "note": "路上补给。",
+          "soft": "偏软",
+          "dishes": [
+            {
+              "name": "面食",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "夏河县城",
+          "hours": "参考",
+          "note": "与第6格food对齐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "藏餐",
+              "price": "参考"
+            },
+            {
+              "name": "清真",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3418574223%2C3939027298%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D741"
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "中",
+          "walk": "约3-5公里",
+          "why": "转场为主，草原慢走。"
+        },
+        "rain": {
+          "cut": "草原夜观星",
+          "keep": "县城茶歇",
+          "instead": "县城茶馆"
+        },
+        "park": {
+          "leave": "夏河县城停车",
+          "then": "草原段包车往返",
+          "pickup": "返回县城停车点"
+        }
+      },
+      "weekday": "周二",
+      "theme": "第 5 天",
+      "brief": "沿途草原·夏河县城茶歇·草原星空"
+    },
+    {
+      "day": 6,
+      "date": "2026-07-15",
+      "title": "夏河返程",
+      "slots": [
+        {
+          "kind": "route",
+          "name": "夏河返程",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "视航班或车次安排，预留县城到机场/车站时间。",
+          "ticketPrice": ""
+        },
+        {
+          "kind": "spot",
+          "name": "夏河县城周边",
+          "time": "上午",
+          "period": "上午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "若时间充裕可县城慢走。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E5%A4%8F%E6%B2%B3%E8%BF%94%E7%A8%8B&to=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E5%91%A8%E8%BE%B9&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "夏河县城补给",
+          "time": "中午",
+          "period": "中午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "购买路上所需。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E5%91%A8%E8%BE%B9&to=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%A1%A5%E7%BB%99&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "spot",
+          "name": "前往机场/车站",
+          "time": "下午",
+          "period": "下午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "按实际交通时间出发。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E5%A4%8F%E6%B2%B3%E5%8E%BF%E5%9F%8E%E8%A1%A5%E7%BB%99&to=102.512,35.202,%E5%89%8D%E5%BE%80%E6%9C%BA%E5%9C%BA%2F%E8%BD%A6%E7%AB%99&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "depart",
+          "name": "返程",
+          "time": "下午",
+          "period": "下午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "结束甘南探秘行程。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E5%89%8D%E5%BE%80%E6%9C%BA%E5%9C%BA%2F%E8%BD%A6%E7%AB%99&to=102.512,35.202,%E8%BF%94%E7%A8%8B&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        },
+        {
+          "kind": "food",
+          "name": "午餐·视航班或车次",
+          "time": "中午",
+          "period": "中午",
+          "lat": 35.202,
+          "lng": 102.512,
+          "review": "与午餐place对齐。",
+          "ticketPrice": "",
+          "transport": {
+            "mode": "步行",
+            "fare": "免费",
+            "duration": "",
+            "distance": "",
+            "meters": 0,
+            "provider": "local",
+            "actionLink": {
+              "label": "导航",
+              "url": "https://uri.amap.com/navigation?from=102.512,35.202,%E8%BF%94%E7%A8%8B&to=102.512,35.202,%E5%8D%88%E9%A4%90%C2%B7%E8%A7%86%E8%88%AA%E7%8F%AD%E6%88%96%E8%BD%A6%E6%AC%A1&mode=walk&coordinate=wgs84&callnative=1&src=travel-monkey"
+            }
+          }
+        }
+      ],
+      "dining": [
+        {
+          "meal": "早餐",
+          "place": "夏河县城",
+          "hours": "参考",
+          "note": "县城早餐。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "包子",
+              "price": "参考"
+            }
+          ],
+          "photo": "/travel-photo?u=https%3A%2F%2Fimg2.baidu.com%2Fit%2Fu%3D3418574223%2C3939027298%26fm%3D253%26fmt%3Dauto%26app%3D120%26f%3DJPEG%3Fw%3D500%26h%3D741"
+        },
+        {
+          "meal": "午餐",
+          "place": "视航班或车次",
+          "hours": "参考",
+          "note": "路上或机场/车站解决。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "简餐",
+              "price": "参考"
+            }
+          ]
+        },
+        {
+          "meal": "晚餐",
+          "place": "视航班或车次",
+          "hours": "参考",
+          "note": "若在途则自理。",
+          "soft": "",
+          "dishes": [
+            {
+              "name": "自理",
+              "price": "参考"
+            }
+          ]
+        }
+      ],
+      "craft": {
+        "load": {
+          "level": "轻",
+          "walk": "约1-2公里",
+          "why": "返程为主。"
+        },
+        "rain": {
+          "cut": "无",
+          "keep": "县城室内",
+          "instead": "提前到站"
+        },
+        "park": {
+          "leave": "夏河县城停车",
+          "then": "前往机场/车站",
+          "pickup": "还车或结束"
+        }
+      },
+      "weekday": "周三",
+      "theme": "第 6 天",
+      "brief": "夏河县城周边·夏河县城补给"
+    }
+  ],
+  "dataSources": [
+    {
+      "name": "高德地图",
+      "scope": "地理编码 / POI / 天气 / 路线",
+      "realtime": true
+    },
+    {
+      "name": "本地路网估算",
+      "scope": "无地图 Key：按坐标直线距离估算步行/公交/打车，非实测路网",
+      "realtime": false
+    }
+  ],
+  "ui": {
+    "overviewLead": "甘南6天5晚•夏河、桑科、扎尕那星空探秘：按日看线路、景点、住宿与餐饮。",
+    "heroSub": "本行程依据公开攻略与线路库整理，非实测踩线；开放时间、路况、票价与天气以出行当日官方",
+    "themeId": "slate",
+    "themeName": "石庭"
+  },
+  "personaLabel": "探秘",
+  "budget": {
+    "nights": 5,
+    "note": "按整程住宿晚数×三档中间价估算，仅作预算信封参考。",
+    "tiers": [
+      {
+        "tier": "经济",
+        "total": "约 ¥1250（5晚参考）"
+      },
+      {
+        "tier": "中档",
+        "total": "约 ¥2750（5晚参考）"
+      },
+      {
+        "tier": "高端",
+        "total": "约 ¥6000（5晚参考）"
+      }
+    ]
+  },
+  "overview": [
+    {
+      "day": 1,
+      "date": "2026-07-10",
+      "route": "抵达夏河县城",
+      "spots": "拉卜楞寺 / 桑科草原 / 夏河县城转经道外围",
+      "stay": "住夏河县城",
+      "food": "晚餐·夏河县城清真小馆",
+      "distance": "",
+      "load": "轻",
+      "rain": "桑科草原露天段",
+      "park": "夏河县城停车"
+    },
+    {
+      "day": 2,
+      "date": "2026-07-11",
+      "route": "夏河→合作",
+      "spots": "米拉日巴佛阁 / 合作城区人文闲逛 / 合作当周街一带",
+      "stay": "住合作县城",
+      "food": "晚餐·合作县城川菜小馆",
+      "distance": "",
+      "load": "轻",
+      "rain": "佛阁外围露天段",
+      "park": "合作县城停车"
+    },
+    {
+      "day": 3,
+      "date": "2026-07-12",
+      "route": "合作→扎尕那",
+      "spots": "扎尕那徒步（业日村—石林方向） / 扎尕那村内午休 / 扎尕那观景台",
+      "stay": "住扎尕那村内",
+      "food": "晚餐·扎尕那村内或迭部县城",
+      "distance": "",
+      "load": "偏累",
+      "rain": "石林高处段",
+      "park": "扎尕那村口停车"
+    },
+    {
+      "day": 4,
+      "date": "2026-07-13",
+      "route": "扎尕那晨雾与日出",
+      "spots": "扎尕那→郎木寺 / 郎木寺镇 / 郎木寺周边草原",
+      "stay": "住郎木寺或碌曲县城",
+      "food": "晚餐·郎木寺或碌曲县城",
+      "distance": "",
+      "load": "中",
+      "rain": "尕海湖露天段",
+      "park": "郎木寺或碌曲县城停车"
+    },
+    {
+      "day": 5,
+      "date": "2026-07-14",
+      "route": "郎木寺或碌曲→夏河",
+      "spots": "沿途草原 / 夏河县城茶歇 / 草原星空",
+      "stay": "住夏河县城",
+      "food": "晚餐·夏河县城",
+      "distance": "",
+      "load": "中",
+      "rain": "草原夜观星",
+      "park": "夏河县城停车"
+    },
+    {
+      "day": 6,
+      "date": "2026-07-15",
+      "route": "夏河返程",
+      "spots": "夏河县城周边 / 夏河县城补给 / 前往机场/车站",
+      "stay": "返程",
+      "food": "午餐·视航班或车次",
+      "distance": "",
+      "load": "轻",
+      "rain": "无",
+      "park": "夏河县城停车"
+    }
+  ]
+}

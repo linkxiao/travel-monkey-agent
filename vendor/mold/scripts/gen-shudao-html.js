@@ -91,7 +91,7 @@ const overviewHtml = (trip.overview && trip.overview.length)
 ${css}
 .hero{
   background-image:
-    linear-gradient(180deg,rgba(6,8,12,.35) 0%,rgba(6,8,12,.05) 40%,rgba(6,8,12,.62) 100%),
+    linear-gradient(180deg,rgba(6,8,12,.55) 0%,rgba(6,8,12,.18) 42%,rgba(6,8,12,.55) 100%),
     url('${ui.heroBanner}');
 }
 </style>
@@ -219,12 +219,11 @@ ${css}
 
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-${mapJs}
-</script>
 <script>
 ${remindersJs}
+</script>
+<script>
+${mapJs}
 </script>
 <script id="trip-data" type="application/json">
 ${JSON.stringify(trip)}
@@ -619,7 +618,17 @@ function renderTips() {
   safe(renderTimeline);
   safe(renderTips);
   safe(initCarousels);
-  safe(function () { initTravelMap('map', mapPoints); });
+  // 地图放在 Leaflet 脚本之后初始化，避免 CDN 卡住时整页卡片都不渲染
+})();
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  try {
+    if (typeof initTravelMap === 'function' && typeof mapPoints !== 'undefined') {
+      initTravelMap('map', mapPoints);
+    }
+  } catch (err) { console.error(err); }
 })();
 </script>
 </body>

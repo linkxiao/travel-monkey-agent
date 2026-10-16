@@ -147,6 +147,30 @@ export function formatAskAnswers(items: AskItem[], answers: string[]): string {
   return '对以下问题的答复（按选项写入，不要再追问同一批）：\n' + lines.join('\n')
 }
 
+function askFingerprint(question: string) {
+  return String(question || '').replace(/\s+/g, '').replace(/[？?。！!，,、：:（）()「」“”"'《》]/g, '').slice(0, 24)
+}
+
+/** 用户刚提交的点选。这批问句不再抽成卡片，避免确认后原题再弹出来。 */
+export function answeredAskKeys(text: string): string[] {
+  const raw = String(text || '')
+  if (!raw.includes('对以下问题的答复')) return []
+  return raw.split('\n')
+    .map((line) => line.match(/^\d+\s*[.、)]\s*(.+)$/)?.[1] || '')
+    .map(askFingerprint)
+    .filter((key) => key.length >= 4)
+}
+
+export function omitAnsweredAsks(items: AskItem[], answered: string[]): AskItem[] {
+  if (!answered.length) return items
+  return items.filter((item) => {
+    const key = askFingerprint(item.question)
+    if (key.length < 4) return true
+    const head = key.slice(0, 12)
+    return !answered.some((prev) => prev.startsWith(head) || head.startsWith(prev.slice(0, 12)))
+  })
+}
+
 export function extractPlanQuestions(plan: string): string[] {
   return extractAskItems(plan, { loose: true }).map((item) => item.question)
 }

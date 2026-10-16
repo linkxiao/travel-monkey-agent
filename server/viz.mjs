@@ -34,24 +34,10 @@ import { detectPersona, normalizePersona, personaLabel, personaTip } from './per
 import { ensureDayCraft } from './craft.mjs'
 import { qualityChecklist } from './quality.mjs'
 import { dataKeys } from './config.mjs'
+import { applySecurityHeaders, rateLimit, readJsonLimited, requireLogin } from './guard.mjs'
 
 const DEFAULT_DISCLAIMER =
   '本页全部信息（天气、航班、高铁、酒店、餐厅、景点、门票、价格、营业时间、评分、活动等）均为 AI 基于公开资料整理的参考建议，可能不准确或已过时，不保证与实时情况一致；请务必在官方渠道核实后再出发。'
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', (c) => chunks.push(c))
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'))
-      } catch (err) {
-        reject(err)
-      }
-    })
-    req.on('error', reject)
-  })
-}
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
@@ -566,14 +552,37 @@ function ensureDaySlots(day, isLast, fallback) {
   day.slots = ordered
 }
 
-// 标题不能是待确认的问句或编号条目；不像标题就用目的地 + 天数代替
+const TITLE_MAX = 30
+
+/** 模型把住宿三档说明写进 title 时，不当成封面标题 */
+function looksLikeHotelDump(s) {
+  const t = String(s || '')
+  return /经济\s*[：:]|中档\s*[：:]|高端\s*[：:]/.test(t)
+    || (/酒店|民宿|宾馆/.test(t) && /[；;]|——|—/.test(t) && [...t].length > 22)
+}
+
+function clampTitle(s) {
+  const chars = [...String(s || '').trim()]
+  if (chars.length <= TITLE_MAX) return chars.join('')
+  return chars.slice(0, TITLE_MAX).join('').replace(/[·・\-\s—：:，,、]+$/g, '')
+}
+
+// 封面标题：≤30 字；不能是问句、编号条、住宿三档长文
 export function tripTitle(trip) {
   const raw = String(trip.title || '').trim()
-  if (raw && !/[？?]/.test(raw) && !/^\d+[.、．]/.test(raw) && !/待确认|答案[：:]/.test(raw)) return raw
   const days = Array.isArray(trip.days) ? trip.days : []
+  const ok = raw
+    && !/[？?]/.test(raw)
+    && !/^\d+[.、．]/.test(raw)
+    && !/待确认|答案[：:]/.test(raw)
+    && !looksLikeHotelDump(raw)
+    && [...raw].length <= TITLE_MAX
+  if (ok) return raw
   const dest = guessDest([raw, ...days.map((d) => d && d.theme)].filter(Boolean).join(' '))
-  if (dest && days.length) return `${dest} ${days.length} 日行程`
-  return days.length ? `${days.length} 日行程` : '未命名行程'
+  const fallback = dest && days.length
+    ? `${dest} ${days.length} 日行程`
+    : (days.length ? `${days.length} 日行程` : '未命名行程')
+  return clampTitle(fallback)
 }
 
 function normalizeTrip(trip) {
@@ -731,12 +740,14 @@ export function saveSeedTrip(raw) {
 }
 
 export async function handleSeedSave(req, res) {
+  applySecurityHeaders(res)
+  if (!requireLogin(req, res, '登录后才能保存示例').ok) return
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   try {
-    const body = await readJsonBody(req)
+    const body = await readJsonLimited(req, 2_000_000)
     res.end(JSON.stringify(saveSeedTrip(body.trip)))
   } catch (err) {
-    res.statusCode = 400
+    res.statusCode = err.status || 400
     res.end(JSON.stringify({ error: err.message || String(err) }))
   }
 }
@@ -749,7 +760,7 @@ export function loadSeedTrip(id) {
 
 export async function runSkillPage(raw, opts = {}) {
   const draft = raw && typeof raw === 'object' ? raw : {}
-  if (!hasHotelHints(draft.hotelHints) && !tripHasRealHotels(draft) && opts.amapKey) {
+  if (!opts.fast && !hasHotelHints(draft.hotelHints) && !tripHasRealHotels(draft) && opts.amapKey) {
     const dest = guessDest([draft.title, ...(draft.days || []).map((d) => d.theme)].filter(Boolean).join(' '))
     draft.hotelHints = await fetchHotelsByDest(dest, opts.amapKey)
   }
@@ -759,23 +770,36 @@ export async function runSkillPage(raw, opts = {}) {
     forceId: opts.themeId,
     fallback: !!opts.fallback,
   })
-  if (!opts.skipPhotos) {
-    await enrichTripPhotos(trip, {
-      replacePhotos: !!opts.replacePhotos,
-      photoNames: opts.photoNames,
-      photoKinds: opts.photoKinds,
-      photoHint: opts.photoHint,
-      photoDays: opts.photoDays,
-      photoQuery: opts.photoQuery,
-      searchKey: opts.searchKey,
-      searchProvider: opts.searchProvider,
-      amapKey: opts.amapKey,
-    })
-  }
-  if (!opts.skipTransport) {
-    const mapKeys = { amapKey: opts.amapKey, tiandituKey: opts.tiandituKey }
-    await enrichTripTransport(trip, mapKeys)
-    await enrichTripTickets(trip, mapKeys)
+  const mapKeys = { amapKey: opts.amapKey, tiandituKey: opts.tiandituKey }
+  const photoJob = (extra = {}) => enrichTripPhotos(trip, {
+    replacePhotos: !!opts.replacePhotos,
+    fillGaps: !!opts.fillGaps || opts.photoMode === 'fill_gaps',
+    photoMode: opts.photoMode,
+    photoNames: opts.photoNames,
+    photoKinds: opts.photoKinds,
+    photoHint: opts.photoHint,
+    photoDays: opts.photoDays,
+    photoQuery: opts.photoQuery,
+    searchKey: opts.searchKey,
+    searchProvider: opts.searchProvider,
+    searchFallbackKey: opts.searchFallbackKey,
+    searchFallbackProvider: opts.searchFallbackProvider,
+    amapKey: opts.amapKey,
+    ...extra,
+  })
+  if (opts.fast) {
+    // 线路先按直线摆出来。已经搜到过的照片当场贴上，其余等后面那趟补
+    const jobs = [enrichTripTransport(trip, { ...mapKeys, localOnly: true })]
+    if (!opts.skipPhotos) jobs.push(photoJob({ cacheOnly: true }))
+    await Promise.all(jobs.map((job) => job.catch(() => {})))
+  } else {
+    const jobs = []
+    if (!opts.skipPhotos) jobs.push(photoJob())
+    if (!opts.skipTransport) {
+      jobs.push(enrichTripTransport(trip, mapKeys))
+      jobs.push(enrichTripTickets(trip, mapKeys))
+    }
+    await Promise.all(jobs.map((job) => job.catch(() => {})))
   }
   let html = renderTrip(trip)
   let report = validateAll(html)
@@ -799,15 +823,21 @@ export async function runSkillPage(raw, opts = {}) {
 }
 
 export async function handleRender(req, res) {
+  applySecurityHeaders(res)
+  if (!rateLimit(req, res, { key: 'render', max: 40 })) return
+  if (!requireLogin(req, res, '登录后才能出页').ok) return
   try {
-    const body = await readJsonBody(req)
+    const body = await readJsonLimited(req, 4_000_000)
     const out = await runSkillPage(body.trip || body, {
       themeId: body.themeId,
       keepThemeId: body.keepThemeId,
       fallback: body.fallback,
+      fast: !!body.fast,
       skipPhotos: !!body.skipPhotos,
       skipTransport: !!body.skipTransport,
       replacePhotos: !!body.replacePhotos,
+      fillGaps: !!body.fillGaps || body.photoMode === 'fill_gaps',
+      photoMode: body.photoMode,
       photoNames: body.photoNames,
       photoKinds: body.photoKinds,
       photoHint: body.photoHint,
@@ -818,22 +848,25 @@ export async function handleRender(req, res) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(out))
   } catch (err) {
-    res.statusCode = 400
+    res.statusCode = err.status || 400
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({ error: err.message || String(err) }))
   }
 }
 
 export async function handleValidate(req, res) {
+  applySecurityHeaders(res)
+  if (!rateLimit(req, res, { key: 'validate', max: 60 })) return
+  if (!requireLogin(req, res, '登录后才能校验').ok) return
   try {
-    const body = await readJsonBody(req)
+    const body = await readJsonLimited(req, 4_000_000)
     const report = body.html
       ? validateAll(body.html)
       : validateTrip(normalizeTrip(body.trip || body))
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(report))
   } catch (err) {
-    res.statusCode = 400
+    res.statusCode = err.status || 400
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({ error: err.message || String(err) }))
   }

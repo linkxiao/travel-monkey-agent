@@ -54,10 +54,19 @@ function saveDiskCache() {
     try {
       fs.mkdirSync(new URL('./', import.meta.url), { recursive: true })
       const obj = {}
-      ;[...nameCache.entries()].slice(-300).forEach(([k, v]) => { obj[k] = v })
-      fs.writeFileSync(DISK_CACHE_FILE, JSON.stringify(obj).slice(0, 200000))
+      ;[...nameCache.entries()].filter(([, v]) => v).slice(-300).forEach(([k, v]) => { obj[k] = v })
+      fs.writeFileSync(DISK_CACHE_FILE, JSON.stringify(obj))
     } catch { /* cache is best-effort */ }
   }, 2000)
+}
+
+function cachedPhoto(core, kind) {
+  const prefix = `${core}|${kind}|`
+  let hit = ''
+  for (const [key, url] of nameCache) {
+    if (url && key.startsWith(prefix)) hit = url
+  }
+  return hit
 }
 loadDiskCache()
 
@@ -117,8 +126,11 @@ function refererFor(url) {
 }
 
 function imageHeaders(url) {
+  const host = hostnameOf(url)
+  // 维基会拒绝伪装成浏览器的脚本请求，回一页 HTML，代理只能当成缺图。
+  const wiki = host === 'wikimedia.org' || host.endsWith('.wikimedia.org') || host === 'wikipedia.org' || host.endsWith('.wikipedia.org')
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'User-Agent': wiki ? UA['User-Agent'] : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
   }
   const referer = refererFor(url)
@@ -128,6 +140,14 @@ function imageHeaders(url) {
 
 export function isLocalPhoto(url) {
   return typeof url === 'string' && (url.startsWith('travel-assets/') || url.startsWith('/travel-assets/'))
+}
+
+/** 占位图 / 空链：缺图补图时应当成「没有真图」覆盖掉 */
+export function isPlaceholderPhoto(url) {
+  if (!url || typeof url !== 'string') return true
+  const u = url.trim()
+  if (!u) return true
+  return /placehold\.co|placeholder\.com|via\.placeholder|dummyimage\.com|picsum\.photos|\/no[-_]?image|default[-_]?photo|图片加载中|text=图片|data:image\/svg/i.test(u)
 }
 
 export function proxiedPhoto(url) {
@@ -340,9 +360,9 @@ async function commonsMeta(fileTitle) {
 async function fromWikipediaSearch(query, name, hints) {
   for (const lang of ['zh', 'en']) {
     const search = await getJson(
-      `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=4&srsearch=${encodeURIComponent(query)}`,
+      `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=2&srsearch=${encodeURIComponent(query)}`,
     )
-    for (const hit of search?.query?.search || []) {
+    for (const hit of (search?.query?.search || []).slice(0, 2)) {
       const title = hit.title || ''
       const snippet = String(hit.snippet || '').replace(/<[^>]+>/g, '')
       if (!titleMatchesName(title, name) && !titleMatchesName(snippet, name)) continue
@@ -361,7 +381,7 @@ async function fromCommons(query, name, hints) {
     + encodeURIComponent(`"${coreName(name)}" ${query}`),
   )
   const ranked = []
-  for (const hit of data?.query?.search || []) {
+  for (const hit of (data?.query?.search || []).slice(0, 4)) {
     const meta = await commonsMeta(hit.title)
     const text = `${hit.snippet || ''} ${meta?.text || ''}`
     const score = scoreRecord({ title: hit.title, text, name, hints })
@@ -640,13 +660,22 @@ async function fromBaiduImages(name, hints, kind) {
   return pickRanked(ranked)
 }
 
-async function fromWiki(name, hints) {
-  const qs = [coreName(name) || name, ...queriesFor(name, hints)].filter((q, i, all) => q && all.indexOf(q) === i).slice(0, 3)
-  for (const q of qs) {
-    const url = await fromWikipediaSearch(q, name, hints)
-    if (url) return url
+function pageSearch(search) {
+  const provider = search?.searchProvider || ''
+  if (provider === 'tavily' || provider === 'serper') return search
+  if (!search?.searchFallbackKey) return { ...search, searchKey: '' }
+  return {
+    ...search,
+    searchKey: search.searchFallbackKey,
+    searchProvider: search.searchFallbackProvider || 'tavily',
   }
-  return fromCommons(coreName(name) || name, name, hints)
+}
+
+async function fromWiki(name, hints) {
+  const q = coreName(name) || name
+  const url = await fromWikipediaSearch(q, name, hints)
+  if (url) return url
+  return fromCommons(q, name, hints)
 }
 
 async function fromDianping(name, hints, search, kind) {
@@ -783,28 +812,42 @@ function queryForSlot(slot, day, needles = [], hint = '', override = '') {
 export async function findPhoto(name, hints = [], search = {}, kind = '') {
   const qName = photoQueryName(name, kind)
   if (!qName || skipPhotoName(qName, kind) || (nameLooksGeneric(qName) && !cityHintsOf(hints).length)) return ''
-  const key = `${coreName(qName) || qName}|${kind}|${hints.slice(0, 4).join(',')}|${search.searchProvider || 'baidu'}|${search.amapKey ? 'amap' : 'noamap'}|${search.searchKey ? 'search' : 'nosearch'}|v14`
-  if (!search.skipCache && nameCache.has(key)) return nameCache.get(key)
-  let url = ''
-  if (isSceneQuery(qName)) {
-    url = await fromBaiduImages(qName, hints, kind)
-    if (!url) url = await fromWiki(qName, hints)
-  } else {
-    url = await fromDianping(qName, hints, search, kind)
-    if (!url) url = await fromAmapPoi(qName, search.amapKey, hints, kind)
-    if (!url) url = await fromBaiduImages(qName, hints, kind)
-    if (!url) url = await fromWiki(qName, hints)
+  const core = coreName(qName) || qName
+  // 地名对上就用，不跟提示词顺序、搜索源版本绑死
+  if (!search.skipCache) {
+    const hit = cachedPhoto(core, kind)
+    if (hit) return hit
   }
+  if (search.cacheOnly) return ''
+  let url = ''
+  const lodging = kind === 'stay' || kind === 'hotel' || kind === 'food' || kind === 'dining'
+  try {
+    if (isSceneQuery(qName)) {
+      url = await fromBaiduImages(qName, hints, kind)
+      if (!url) url = await fromWiki(qName, hints)
+    } else {
+      // 高德店图对得上店名，先查它；点评和维基只在没图时再找
+      url = await fromAmapPoi(qName, search.amapKey, hints, kind)
+      if (!url && lodging) url = await fromDianping(qName, hints, pageSearch(search), kind)
+      if (!url) url = await fromBaiduImages(qName, hints, kind)
+      if (!url) url = await fromWiki(qName, hints)
+    }
+  } catch {
+    url = ''
+  }
+  // 没搜到不落盘。空结果一旦记下，这一进程里同名景点会一直是占位图
+  if (!url) return ''
+  const key = `${core}|${kind}|${hints.slice(0, 4).join(',')}|${search.searchProvider || 'baidu'}|${search.amapKey ? 'amap' : 'noamap'}|${search.searchKey ? 'search' : 'nosearch'}|v16`
   nameCache.set(key, url)
   saveDiskCache()
   return url
 }
 
 async function currentIsKeepable(url, name, hints) {
-  if (!url) return false
+  if (!url || isPlaceholderPhoto(url)) return false
   if (isLocalPhoto(url)) return true
   const raw = url.startsWith('/travel-photo?') ? new URL(url, 'http://127.0.0.1').searchParams.get('u') : url
-  if (!raw || !isAllowedPhotoHost(raw)) return false
+  if (!raw || !isAllowedPhotoHost(raw) || isPlaceholderPhoto(raw)) return false
   if (!await probeImage(raw)) return false
   const host = hostnameOf(raw)
   if (!/wikimedia|wikipedia/.test(host)) {
@@ -841,23 +884,50 @@ async function mapPool(items, limit, fn) {
     while (i < items.length) {
       const idx = i
       i += 1
-      await fn(items[idx], idx)
+      try {
+        await fn(items[idx], idx)
+      } catch {
+        /* 一格搜图失败不影响其余格子 */
+      }
     }
   }))
+}
+
+/**
+ * 审计一格：空 / 占位 / 打不开 / 和店名明显对不上 → 算缺图，需要批量补。
+ * 用户上传的本地图一律视为真图。
+ */
+export async function auditPhotoGap(url, name, hints, kind) {
+  if (skipPhotoName(name, kind) || skipPhotoName(photoQueryName(name, kind), kind)) {
+    return { gap: false, reason: 'skip' }
+  }
+  if (!url || isPlaceholderPhoto(url)) return { gap: true, reason: 'empty_or_placeholder' }
+  if (isLocalPhoto(url)) return { gap: false, reason: 'local' }
+  const qName = photoQueryName(name, kind)
+  if (await currentIsKeepable(url, qName, hints)) return { gap: false, reason: 'real' }
+  return { gap: true, reason: 'bad_or_mismatch' }
 }
 
 export async function enrichTripPhotos(trip, opts = {}) {
   const search = {
     searchKey: opts.searchKey || '',
     searchProvider: opts.searchProvider || 'tavily',
+    searchFallbackKey: opts.searchFallbackKey || '',
+    searchFallbackProvider: opts.searchFallbackProvider || 'tavily',
     amapKey: opts.amapKey || '',
+    cacheOnly: !!opts.cacheOnly,
   }
   const only = Array.isArray(opts.photoNames) ? opts.photoNames.filter(Boolean) : []
   const kinds = Array.isArray(opts.photoKinds) ? opts.photoKinds.filter(Boolean) : []
   const onlyDays = Array.isArray(opts.photoDays) ? opts.photoDays.map(Number).filter((n) => Number.isFinite(n) && n >= 1) : []
   const askedQuery = String(opts.photoQuery || '').trim()
+  // fillGaps / 默认出页：先审计再只补坏格；replacePhotos 必须带范围，防止误刷整趟
+  const fillGaps = !!opts.fillGaps || opts.photoMode === 'fill_gaps'
+  const replacePhotos = !!opts.replacePhotos && !fillGaps
   const scoped = only.length > 0 || kinds.length > 0 || onlyDays.length > 0
-  if (opts.replacePhotos && !scoped) return trip
+  if (replacePhotos && !scoped) return trip
+  // 无任何旗标时仍走整趟软补（首次出页）——与 fillGaps 同一套审计逻辑
+  const softFill = fillGaps || !replacePhotos
   const jobs = []
   ;(trip.days || []).forEach((day, di) => {
     // 点名了天就只动那几天，别把别人的图冲掉
@@ -869,36 +939,44 @@ export async function enrichTripPhotos(trip, opts = {}) {
       jobs.push({ type: 'dining', meal, day })
     }
   })
-  // 只点了天时不碰住宿栏（那是整程的，不属于某一天）
-  if (!onlyDays.length || only.length) {
+  // 只点了天时不碰住宿栏（那是整程的，不属于某一天）；fillGaps 整趟审计时也不扫酒店栏
+  if ((!onlyDays.length || only.length) && !fillGaps) {
     for (const area of trip.hotelAreas || []) {
       for (const opt of area.options || []) {
         jobs.push({ type: 'hotel', opt, area })
       }
     }
   }
-  // 只说了天、没点格子也没说种类：这几天的格子全收
+  // 只说了天、没点格子也没说种类：这几天的格子全收；fillGaps 同理（按天审计全部可配图格）
   const dayOnly = onlyDays.length > 0 && !only.length && !kinds.length
+  const auditAllInDays = fillGaps && dayOnly
 
   await mapPool(jobs, 6, async (job) => {
     if (job.type === 'slot') {
       const nameHit = mentioned(job.slot.name, only)
       const kindHit = kinds.includes(job.slot.kind)
       if (scoped && !dayOnly && !nameHit && !kindHit) return
+      if (auditAllInDays && job.slot.kind === 'depart') return
       const prev = job.slot.photo || (Array.isArray(job.slot.photos) ? job.slot.photos[0] : '')
       // 用户自己贴的图：只有点名这一格才让换，按天/按种类的批量换图一律绕开
       if (isLocalPhoto(prev) && !nameHit) return
-      const replacing = !!(opts.replacePhotos && (dayOnly || nameHit || kindHit))
-      if (replacing) clearPhotos(job.slot)
+      const replacing = !!(replacePhotos && (dayOnly || nameHit || kindHit))
+      const hints = destHints(trip, job.slot.name, job.day)
+      // 软补 / fill_gaps：先审计，真图跳过；硬换：范围内直接重搜
+      if (softFill) {
+        const audit = await auditPhotoGap(prev, String(job.slot.name || ''), hints, String(job.slot.kind || 'spot'))
+        if (!audit.gap) return
+      }
+      if (replacing || softFill) clearPhotos(job.slot)
       // 用户自己给了检索词，只用在他点名的那一格上，别套到全天
       const override = askedQuery && (nameHit || (!only.length && job.slot.kind === 'spot')) ? askedQuery : ''
       const query = queryForSlot(job.slot, job.day, only, opts.photoHint, override)
-      const found = await resolveUrl(prev, query.name, destHints(trip, query.name, job.day), search, query.kind, { replace: replacing })
+      const found = await resolveUrl('', query.name, hints, search, query.kind, { replace: replacing })
       const view = found ? (proxiedPhoto(found) || (isAllowedPhotoHost(found) ? found : '')) : ''
       if (view) {
         job.slot.photo = view
         job.slot.photos = [view]
-      } else if (prev) {
+      } else if (prev && !isPlaceholderPhoto(prev)) {
         job.slot.photo = prev
         job.slot.photos = [prev]
       } else {
@@ -912,13 +990,19 @@ export async function enrichTripPhotos(trip, opts = {}) {
       if (dayOnly && askedQuery) return
       const prev = job.meal.photo || ''
       if (isLocalPhoto(prev) && !mentioned(job.meal.place || job.meal.meal, only)) return
-      const found = await resolveUrl(prev, job.meal.place || job.meal.meal, destHints(trip, job.meal.place || job.meal.meal, job.day), search, 'food', { replace: !!(opts.replacePhotos && mentioned(job.meal.place || job.meal.meal, only)) })
+      if (softFill) {
+        const audit = await auditPhotoGap(prev, job.meal.place || job.meal.meal, destHints(trip, job.meal.place || job.meal.meal, job.day), 'food')
+        if (!audit.gap) return
+      }
+      const replacingMeal = !!(replacePhotos && mentioned(job.meal.place || job.meal.meal, only))
+      const found = await resolveUrl((softFill || replacingMeal) ? '' : prev, job.meal.place || job.meal.meal, destHints(trip, job.meal.place || job.meal.meal, job.day), search, 'food', { replace: replacingMeal })
       if (found) job.meal.photo = proxiedPhoto(found) || (isAllowedPhotoHost(found) ? found : '')
-      else if (prev) job.meal.photo = prev
+      else if (prev && !isPlaceholderPhoto(prev)) job.meal.photo = prev
       else delete job.meal.photo
       if (!job.meal.photo) delete job.meal.photo
       return
     }
+    if (fillGaps) return
     if (only.length && !mentioned(job.opt.name, only)) return
     if (kinds.length && !only.length) return
     const hotelName = String(job.opt.name || '')
@@ -929,7 +1013,7 @@ export async function enrichTripPhotos(trip, opts = {}) {
     }
     const prev = job.opt.photo || ''
     if (isLocalPhoto(prev) && !mentioned(hotelName, only)) return
-    const found = await resolveUrl(prev, hotelName, [...destHints(trip, hotelName), job.area?.area].filter(Boolean), search, 'stay', { replace: !!(opts.replacePhotos && mentioned(hotelName, only)) })
+    const found = await resolveUrl(prev, hotelName, [...destHints(trip, hotelName), job.area?.area].filter(Boolean), search, 'stay', { replace: !!(replacePhotos && mentioned(hotelName, only)) })
     if (found) job.opt.photo = proxiedPhoto(found) || (isAllowedPhotoHost(found) ? found : '')
     else if (prev) job.opt.photo = prev
     else delete job.opt.photo

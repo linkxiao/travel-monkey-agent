@@ -5,12 +5,46 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { deliverCode } from './deliver.mjs'
-import { dailyLimit } from './config.mjs'
+import { dailyLimit, isQuotaWhitelisted } from './config.mjs'
 
 const DEFAULT_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '.users.sqlite')
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000
 const CODE_MS = 5 * 60 * 1000
 const pool = new Map()
+/** 登录失败退避：账号 → { fails, until } */
+const loginFails = new Map()
+const LOGIN_FAIL_MAX = 5
+const LOGIN_LOCK_MS = 15 * 60 * 1000
+
+function loginLockStatus(account) {
+  const key = String(account || '').toLowerCase()
+  const row = loginFails.get(key)
+  if (!row) return { locked: false }
+  if (row.until && row.until > Date.now()) {
+    return { locked: true, waitSec: Math.ceil((row.until - Date.now()) / 1000) }
+  }
+  if (row.until && row.until <= Date.now()) {
+    loginFails.delete(key)
+    return { locked: false }
+  }
+  return { locked: false, fails: row.fails || 0 }
+}
+
+function noteLoginFail(account) {
+  const key = String(account || '').toLowerCase()
+  const row = loginFails.get(key) || { fails: 0, until: 0 }
+  row.fails = (row.fails || 0) + 1
+  if (row.fails >= LOGIN_FAIL_MAX) {
+    row.until = Date.now() + LOGIN_LOCK_MS
+    row.fails = 0
+  }
+  loginFails.set(key, row)
+  return loginLockStatus(key)
+}
+
+function clearLoginFail(account) {
+  loginFails.delete(String(account || '').toLowerCase())
+}
 
 export function normalizeEmail(raw) {
   const email = String(raw || '').trim().toLowerCase()
@@ -328,13 +362,32 @@ export async function registerUser({ account, code, password, file = DEFAULT_FIL
 export async function loginUser({ account, password, file = DEFAULT_FILE }) {
   const id = identifyAccount(account)
   if (!id) return { ok: false, error: '请填写邮箱' }
+  const lock = loginLockStatus(id.account)
+  if (lock.locked) {
+    const mins = Math.max(1, Math.ceil((lock.waitSec || 60) / 60))
+    return { ok: false, error: `登录失败次数过多，请约 ${mins} 分钟后再试` }
+  }
   const weak = passwordError(password)
-  if (weak) return { ok: false, error: '密码不对' }
+  if (weak) {
+    noteLoginFail(id.account)
+    return { ok: false, error: '密码不对' }
+  }
   const db = openDb(file)
   const user = findUser(db, id.account)
-  if (!user) return { ok: false, error: '还没有这个账号，请先注册' }
+  if (!user) {
+    noteLoginFail(id.account)
+    return { ok: false, error: '还没有这个账号，请先注册' }
+  }
   if (!hasPassword(user)) return { ok: false, error: '这个账号还没有设置密码，请先完成注册' }
-  if (!passwordMatches(user, password)) return { ok: false, error: '密码不对' }
+  if (!passwordMatches(user, password)) {
+    const next = noteLoginFail(id.account)
+    if (next.locked) {
+      const mins = Math.max(1, Math.ceil((next.waitSec || 60) / 60))
+      return { ok: false, error: `密码不对。失败次数过多，请约 ${mins} 分钟后再试` }
+    }
+    return { ok: false, error: '密码不对' }
+  }
+  clearLoginFail(id.account)
   const token = crypto.randomBytes(32).toString('hex')
   withWrite(db, () => {
     pruneSessions(db)
@@ -361,6 +414,9 @@ export function takeQuota(token, limit, { file = DEFAULT_FILE, now = Date.now(),
   const found = token ? userFromToken(db, token) : null
   if (!found) return { ok: false, error: '用服务端模型需要先登录。' }
   const day = bucket ? `${today(now)}:${bucket}` : today(now)
+  if (isQuotaWhitelisted(found.username)) {
+    return { ok: true, used: 0, limit, day, unlimited: true }
+  }
   return withWrite(db, () => {
     const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, day)
     const used = row ? Number(row.count) : 0
@@ -394,8 +450,17 @@ export function quotaLeft(token, limit, { file = DEFAULT_FILE, now = Date.now() 
   const db = openDb(file)
   const found = token ? userFromToken(db, token) : null
   if (!found) return null
+  if (isQuotaWhitelisted(found.username)) return null
   const row = db.prepare('SELECT count FROM usage WHERE user_id = ? AND day = ?').get(found.user.id, today(now))
   return Math.max(0, limit - (row ? Number(row.count) : 0))
+}
+
+export function quotaStatus(token, limit, { file = DEFAULT_FILE, now = Date.now() } = {}) {
+  const db = openDb(file)
+  const found = token ? userFromToken(db, token) : null
+  if (!found) return { left: null, limit, unlimited: false }
+  if (isQuotaWhitelisted(found.username)) return { left: null, limit, unlimited: true }
+  return { left: quotaLeft(token, limit, { file, now }), limit, unlimited: false }
 }
 
 export function bearerToken(req) {
@@ -436,7 +501,7 @@ export async function handleAuth(req, res) {
     const route = url.pathname.replace(/^\/api\/auth/, '') || '/'
     const token = bearer(req)
     if (req.method === 'GET' && route === '/session') return send(200, sessionUser(token))
-    if (req.method === 'GET' && route === '/quota') return send(200, { left: quotaLeft(token, dailyLimit()), limit: dailyLimit() })
+    if (req.method === 'GET' && route === '/quota') return send(200, quotaStatus(token, dailyLimit()))
     if (req.method !== 'POST') return send(405, { ok: false, error: '这个地址不接受该请求' })
     const body = JSON.parse((await readBody(req)) || '{}')
     if (route === '/code') return send(200, await requestVerify({ purpose: body.purpose, account: body.account }))

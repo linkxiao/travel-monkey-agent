@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import { parseOpenText } from './hours.mjs'
 import { dataKeys } from './config.mjs'
 import { searchWeb } from './search.mjs'
+import { applySecurityHeaders, rateLimit, readJsonLimited, requireLogin } from './guard.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -334,26 +335,17 @@ export async function researchQuery({
   }
 }
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', (c) => chunks.push(c))
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) }
-      catch (err) { reject(err) }
-    })
-    req.on('error', reject)
-  })
-}
-
 export async function handleResearch(req, res) {
+  applySecurityHeaders(res)
+  if (!rateLimit(req, res, { key: 'research', max: 30 })) return
+  if (!requireLogin(req, res, '登录后才能调研').ok) return
   try {
-    const body = await readJsonBody(req)
+    const body = await readJsonLimited(req, 200_000)
     const out = await researchQuery({ ...body, ...dataKeys(body) })
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify(out))
   } catch (err) {
-    res.statusCode = 400
+    res.statusCode = err.status || 400
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({ error: err.message || String(err) }))
   }

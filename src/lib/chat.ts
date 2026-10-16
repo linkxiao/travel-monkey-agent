@@ -70,14 +70,19 @@ export type ServerConfig = {
   dailyLimit: number
 }
 
-export async function fetchQuotaLeft(token: string): Promise<number | null> {
-  if (!token) return null
+export type QuotaInfo = { left: number | null; unlimited: boolean }
+
+export async function fetchQuotaLeft(token: string): Promise<QuotaInfo> {
+  if (!token) return { left: null, unlimited: false }
   try {
     const res = await fetch('/api/auth/quota', { headers: { Authorization: `Bearer ${token}` } })
-    const data = (await res.json()) as { left?: number | null }
-    return typeof data.left === 'number' ? data.left : null
+    const data = (await res.json()) as { left?: number | null; unlimited?: boolean }
+    return {
+      left: typeof data.left === 'number' ? data.left : null,
+      unlimited: Boolean(data.unlimited),
+    }
   } catch {
-    return null
+    return { left: null, unlimited: false }
   }
 }
 

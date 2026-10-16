@@ -29,6 +29,8 @@ export const PROVIDERS: Provider[] = [
       { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
       { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
       { id: 'x-ai/grok-4', name: 'Grok 4' },
+      { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' },
+      { id: 'deepseek/deepseek-v4-pro-0813', name: 'DeepSeek V4 Pro' },
       { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3' },
       { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1' },
       { id: 'qwen/qwen3-max', name: 'Qwen3 Max' },
@@ -92,8 +94,10 @@ export const PROVIDERS: Provider[] = [
     baseUrl: 'https://api.deepseek.com/v1',
     keyHint: 'sk-...',
     models: [
-      { id: 'deepseek-chat', name: 'DeepSeek V3' },
-      { id: 'deepseek-reasoner', name: 'DeepSeek R1' },
+      { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-chat', name: 'DeepSeek V3（旧接口名）' },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1（旧接口名）' },
     ],
   },
   {

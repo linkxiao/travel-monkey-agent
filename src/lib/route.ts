@@ -95,8 +95,9 @@ export function buildRouteMessages(opts: { opening: string; head: string; said: 
 }
 
 function localAction(text: string, tripDays: number | null): Action {
-  if (looksLikeQuestion(text)) return 'ask'
+  // 配图优先于「为什么/怎么」问句：否则「为什么没有图片了」会被误判成 ask，永远换不了图
   if (wantsPhotos(text)) return 'photos'
+  if (looksLikeQuestion(text)) return 'ask'
   const days = statedDays(text)
   if (days != null && tripDays != null && days !== tripDays && !pointsAtTrip(text)) return 'replan'
   return 'edit'

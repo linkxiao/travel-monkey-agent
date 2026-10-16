@@ -1,3 +1,5 @@
+import { authHeaders } from './http.ts'
+
 export type HotelHint = { name?: string; address?: string; cost?: string; tier?: string }
 
 export type ResearchBrief = {
@@ -17,11 +19,13 @@ export async function fetchResearch(opts: {
   searchProvider?: string
   searchFallbackKey?: string
   searchFallbackProvider?: string
+  authToken?: string
 }): Promise<ResearchBrief> {
+  const { authToken, ...body } = opts
   const res = await fetch('/api/research', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(opts),
+    headers: authHeaders(authToken, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
   })
   const data = await res.json()
   if (!res.ok || data.error) throw new Error(data.error || `调研失败 ${res.status}`)

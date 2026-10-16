@@ -88,13 +88,32 @@ function routeCoordinates(points) {
 // 初始化地图：编号 divIcon 标记、按序虚线路线、点击弹出 名称+时间+导航链接。
 // elementId: 容器 id；points: [{lat, lng, name, time}]（按行程顺序，坐标须为 WGS-84）
 // opts 可选：{ tileUrl, attribution } 替换默认 OSM 瓦片源（如 OSM 访问不稳时换镜像）。
+var OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+// 与 OSM 同为 WGS-84。当前网络访问 OSM 会 TLS 失败，先探测一张，失败再换这套。
+var ESRI_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+
+function addTileLayer(map, url, attribution) {
+  return L.tileLayer(url, { attribution: attribution, maxZoom: 19 }).addTo(map);
+}
+
 function initTravelMap(elementId, points, opts) {
   opts = opts || {};
   var map = L.map(elementId);
-  L.tileLayer(opts.tileUrl || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: opts.attribution || '© OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(map);
+  if (opts.tileUrl) {
+    addTileLayer(map, opts.tileUrl, opts.attribution || '© OpenStreetMap contributors');
+  } else {
+    var picked = false;
+    function pick(url, attribution) {
+      if (picked) return;
+      picked = true;
+      addTileLayer(map, url, attribution);
+    }
+    var probe = new Image();
+    probe.onload = function () { pick(OSM_TILES, opts.attribution || '© OpenStreetMap contributors'); };
+    probe.onerror = function () { pick(ESRI_TILES, 'Tiles © Esri'); };
+    setTimeout(function () { pick(ESRI_TILES, 'Tiles © Esri'); }, 2500);
+    probe.src = 'https://a.tile.openstreetmap.org/0/0/0.png';
+  }
 
   var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   points.forEach(function (p, i) {
