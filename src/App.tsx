@@ -108,6 +108,7 @@ export default function App() {
   const [imageBusy, setImageBusy] = useState(false)
   const [imageExport, setImageExport] = useState<{ url: string; filename: string; blob: Blob } | null>(null)
   const shareSnippetRef = useRef<HTMLTextAreaElement>(null)
+  const shareFoldRef = useRef<HTMLDetailsElement>(null)
   const [skillLabel, setSkillLabel] = useState('')
   const [amapKey, setAmapKey] = useState(() => loadSetting('ct.amap', ''))
   const [tiandituKey, setTiandituKey] = useState(() => loadSetting('ct.tianditu', ''))
@@ -1467,6 +1468,21 @@ export default function App() {
 
   useEffect(() => {
     if (!shareOpen || !shareLinkOpen) return
+    const frame = requestAnimationFrame(() => {
+      const fold = shareFoldRef.current
+      const last = fold?.lastElementChild
+      const scroller = fold?.closest('.share-sheet')
+      if (!last || !scroller) return
+      const limit = scroller.getBoundingClientRect().bottom
+      if (last.getBoundingClientRect().bottom > limit - 8) {
+        last.scrollIntoView({ block: 'end' })
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [shareOpen, shareLinkOpen, shareUrl, shareBusy, shareError])
+
+  useEffect(() => {
+    if (!shareOpen || !shareLinkOpen) return
     let cancel = false
     setShareUrl('')
     setShareCard({ url: '', title: '', description: '', image: '' })
@@ -2021,9 +2037,9 @@ export default function App() {
                 </button>
               </>
             )}
-            {import.meta.env.DEV && <button type="button" onClick={() => void saveAsSeed()}>存为示例</button>}
+            {import.meta.env.DEV && <button type="button" className="save-seed" onClick={() => void saveAsSeed()}>存为示例</button>}
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
-            <button type="button" disabled={imageBusy} onClick={() => void onImage()}>{imageBusy ? '导出中…' : '导出图片'}</button>
+            <button type="button" className="export-image" disabled={imageBusy} onClick={() => void onImage()}>{imageBusy ? '导出中…' : '导出图片'}</button>
             <button type="button" className="primary export-h5" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
           </div>}
         </div>
@@ -2239,7 +2255,7 @@ export default function App() {
       )}
       {shareOpen && (
         <div className="modal" onClick={() => setShareOpen(false)}>
-          <div className="sheet share-sheet" role="dialog" aria-labelledby="share-title" onClick={(e) => e.stopPropagation()}>
+          <div className={`sheet share-sheet${shareLinkOpen ? ' is-link-open' : ''}`} role="dialog" aria-labelledby="share-title" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="dialog-close" aria-label="关闭" onClick={() => setShareOpen(false)}>
               <span aria-hidden="true">×</span>
             </button>
@@ -2278,6 +2294,7 @@ export default function App() {
 
             <details
               className="share-link-fold"
+              ref={shareFoldRef}
               open={shareLinkOpen}
               onToggle={(e) => setShareLinkOpen((e.currentTarget as HTMLDetailsElement).open)}
             >

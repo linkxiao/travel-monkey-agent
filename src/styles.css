@@ -1030,7 +1030,13 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
 }
 .sheet h2 { margin: 0 0 8px; font-size: 22px; font-weight: 500; letter-spacing: 0.04em; padding-right: 36px; }
 .sheet p { margin: 0 0 22px; font-size: 14px; line-height: 1.7; color: #5d6578; }
-.share-sheet { width: min(420px, 100%); }
+.share-sheet {
+  width: min(420px, 100%);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .image-sheet { width: min(420px, 100%); max-height: min(88vh, 760px); overflow: auto; }
 .image-export-preview {
   max-height: min(52vh, 420px);
@@ -1549,14 +1555,55 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     .pane-dock-cta { padding-top: 6px; }
     .composer { margin-top: 6px; }
   }
+  /* 分享弹层限制在手机可视高度内，内容在层内滑动；打开链接区时压短文案，让二维码和按钮尽量同屏 */
+  .modal:has(.share-sheet) {
+    align-items: center;
+    overflow: hidden;
+    padding:
+      max(10px, env(safe-area-inset-top, 0px))
+      12px
+      max(10px, env(safe-area-inset-bottom, 0px));
+  }
+  .share-sheet {
+    width: 100%;
+    min-height: 0;
+    max-height: 100%;
+    align-self: center;
+    margin: 0 auto;
+    padding: 20px 16px 16px;
+    overflow: auto;
+  }
+  .share-sheet.is-link-open .share-lead {
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .share-sheet.is-link-open .share-snippet {
+    max-height: 72px;
+    margin-bottom: 8px;
+  }
+  .share-sheet.is-link-open .share-link-fold {
+    margin-top: 10px;
+    padding-top: 8px;
+  }
+  .share-sheet.is-link-open .share-qr { margin-bottom: 8px; }
+  .share-sheet.is-link-open .share-qr svg { width: 148px; height: 148px; }
+  .share-sheet.is-link-open .share-link { margin-bottom: 8px; }
+  .share-sheet .sheet-actions { gap: 6px; }
   .toolbar {
     flex-wrap: wrap;
     gap: 8px;
     padding: 10px 12px;
   }
-  /* 窄屏预览已经是手机宽度，不再提供手机/桌面切换，也不提供导出 H5 */
+  /* 窄屏预览已经是手机宽度：不切换手机/桌面，不导出 H5。
+     存为示例、导出图片收进开发环境和分享里，核对状态也不占一行。 */
   .toolbar .seg,
-  .actions .export-h5 {
+  .actions .export-h5,
+  .actions .save-seed,
+  .actions .export-image,
+  .page-enrich {
     display: none;
   }
   .toolbar:not(:has(.actions)):not(:has(.page-enrich)) {

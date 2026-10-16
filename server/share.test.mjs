@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { decorateShareHtml, extractShareMeta, publishShareHtml, readShareHtml, requestOrigin, signWechatUrl } from './share.mjs'
+import { decorateShareHtml, extractShareMeta, localShareAsset, publishShareHtml, readShareHtml, requestOrigin, signWechatUrl } from './share.mjs'
 
 const page = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><title>蜀道 · 行程计划</title>
@@ -34,6 +34,23 @@ test('share page carries a WeChat card and a root base url', () => {
   assert.match(html, /<base href="\/">/)
   assert.match(html, /id="tm-wx-share"/)
   assert.doesNotMatch(html, /jweixin/)
+})
+
+test('share card can point at a small same-origin thumbnail', () => {
+  const html = decorateShareHtml(page, {
+    pageUrl: 'http://119.91.204.216/s/abc',
+    origin: 'http://119.91.204.216',
+    cardImage: 'http://119.91.204.216/s/abc/card.jpg',
+  })
+  assert.match(html, /property="og:image" content="http:\/\/119\.91\.204\.216\/s\/abc\/card\.jpg"/)
+  assert.match(html, /itemprop="image" content="http:\/\/119\.91\.204\.216\/s\/abc\/card\.jpg"/)
+})
+
+test('local share asset stays inside travel-assets', () => {
+  assert.match(localShareAsset('travel-assets/xian/banner.jpg'), /travel-assets\/xian\/banner\.jpg$/)
+  assert.equal(localShareAsset('../server/share.mjs'), '')
+  assert.equal(localShareAsset('/etc/passwd'), '')
+  assert.equal(localShareAsset('https://img.example/a.jpg'), '')
 })
 
 test('proxied https photo becomes the WeChat card image', () => {

@@ -10,7 +10,7 @@ import { handleResearch } from './research.mjs'
 import { handleUpload } from './uploads.mjs'
 import { handleAuth, sessionUser } from './users.mjs'
 import { handleConfig } from './config.mjs'
-import { handleShareGet, handleSharePublish, matchShare } from './share.mjs'
+import { handleShareCard, handleShareGet, handleSharePublish, matchShare, matchShareCard } from './share.mjs'
 import { applySecurityHeaders, healthPayload, rateLimit } from './guard.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -84,6 +84,9 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/share') {
     return handleSharePublish(req, res)
+  }
+  if (req.method === 'GET' && matchShareCard(url.pathname)) {
+    return handleShareCard(req, res)
   }
   if (req.method === 'GET' && matchShare(url.pathname)) {
     return handleShareGet(req, res)

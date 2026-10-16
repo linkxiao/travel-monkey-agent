@@ -1,9 +1,5 @@
 import { downloadText, pageTitle, repairMobileChecklist, safeFilename } from './html'
 
-type HtmlToImage = {
-  toJpeg: (node: HTMLElement, opts: Record<string, unknown>) => Promise<string>
-}
-
 export type ExportDevice = 'phone' | 'desktop'
 
 // 预览 iframe 故意不带 allow-same-origin，父页面读 contentWindow.document 会抛跨域错误。
@@ -83,15 +79,6 @@ export async function shareJpegFile(file: File): Promise<'shared' | 'aborted' | 
     if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
     return 'unavailable'
   }
-}
-
-function jpegBlob(dataUrl: string) {
-  const comma = dataUrl.indexOf(',')
-  const raw = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
-  const binary = atob(raw)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return new Blob([bytes], { type: 'image/jpeg' })
 }
 
 function openExportFrame(html: string, width: number) {
@@ -180,33 +167,87 @@ async function withTimeout<T>(work: Promise<T>, ms: number, label: string) {
   }
 }
 
-async function waitImages(doc: Document) {
-  const images = Array.from(doc.images || [])
-  await Promise.all(images.map((img) => {
-    if (img.complete && img.naturalWidth) return Promise.resolve()
-    return new Promise<void>((resolve) => {
-      const done = () => resolve()
-      img.addEventListener('load', done, { once: true })
-      img.addEventListener('error', done, { once: true })
-      window.setTimeout(done, 4000)
-    })
-  }))
+const IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+
+function waitOne(img: HTMLImageElement, ms: number) {
+  if (img.complete && img.naturalWidth) return Promise.resolve(true)
+  return new Promise<boolean>((resolve) => {
+    const done = (ok: boolean) => resolve(ok)
+    img.addEventListener('load', () => done(true), { once: true })
+    img.addEventListener('error', () => done(false), { once: true })
+    window.setTimeout(() => done(Boolean(img.naturalWidth)), ms)
+  })
 }
 
-function loadLib(win: Window, doc: Document): Promise<HtmlToImage> {
-  const existing = (win as Window & { htmlToImage?: HtmlToImage }).htmlToImage
-  if (existing) return Promise.resolve(existing)
-  return new Promise((resolve, reject) => {
-    const script = doc.createElement('script')
-    script.src = `${window.location.origin}/export/html-to-image.js`
-    script.onload = () => {
-      const lib = (win as Window & { htmlToImage?: HtmlToImage }).htmlToImage
-      if (!lib) reject(new Error('导出组件未就绪'))
-      else resolve(lib)
+function drawJpeg(doc: Document, img: HTMLImageElement, maxEdge: number) {
+  const edge = Math.max(img.naturalWidth, img.naturalHeight)
+  const scale = edge > maxEdge ? maxEdge / edge : 1
+  const w = Math.max(1, Math.round(img.naturalWidth * scale))
+  const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const canvas = doc.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.drawImage(img, 0, 0, w, h)
+  return canvas.toDataURL('image/jpeg', 0.72)
+}
+
+async function rasterUrl(doc: Document, url: string, maxEdge: number, ms: number) {
+  if (!url || url.startsWith('data:')) return url
+  const img = doc.createElement('img')
+  img.crossOrigin = 'anonymous'
+  const ready = waitOne(img, ms)
+  img.src = url
+  if (!await ready || !img.naturalWidth) return ''
+  try {
+    return drawJpeg(doc, img, maxEdge)
+  } catch {
+    return ''
+  }
+}
+
+/** 导出前把大图压成小 JPEG。否则 html-to-image 会把原图（常见数 MB）整段塞进 SVG，手机上又慢又容易失败。 */
+async function shrinkExportMedia(doc: Document, maxEdge: number) {
+  const images = Array.from(doc.images || [])
+  await Promise.all(images.map(async (img) => {
+    const ok = await waitOne(img, 1800)
+    img.removeAttribute('srcset')
+    if (!ok || !img.naturalWidth) {
+      img.src = IMAGE_PLACEHOLDER
+      return
     }
-    script.onerror = () => reject(new Error('导出组件加载失败'))
-    doc.head.appendChild(script)
-  })
+    try {
+      const data = drawJpeg(doc, img, maxEdge)
+      if (data) img.src = data
+    } catch {
+      img.src = IMAGE_PLACEHOLDER
+    }
+  }))
+
+  const hero = doc.querySelector<HTMLElement>('.hero')
+  if (!hero) return
+  const view = doc.defaultView
+  const bg = view ? view.getComputedStyle(hero).backgroundImage : ''
+  if (!bg || bg === 'none') return
+  let next = bg
+  const urls = [...bg.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]).filter((u) => u && !u.startsWith('data:'))
+  for (const url of urls) {
+    const data = await rasterUrl(doc, url, Math.max(maxEdge, 960), 2500)
+    next = data ? next.split(url).join(data) : next.replace(/url\((['"]?).*?\1\)/, 'none')
+  }
+  hero.style.backgroundImage = next
+}
+
+function outputSize(width: number, height: number, mobile: boolean) {
+  const maxEdge = mobile ? 4096 : 8192
+  const maxArea = mobile ? 6_000_000 : 14_000_000
+  let scale = Math.min(1, maxEdge / Math.max(width, 1), maxEdge / Math.max(height, 1))
+  if (width * scale * height * scale > maxArea) scale = Math.sqrt(maxArea / Math.max(width * height, 1))
+  return {
+    canvasWidth: Math.max(1, Math.round(width * scale)),
+    canvasHeight: Math.max(1, Math.round(height * scale)),
+  }
 }
 
 function nextFrame(win: Window) {
@@ -264,28 +305,43 @@ function lockPreview(iframe: HTMLIFrameElement, doc: Document, width: number) {
   }
 }
 
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob || blob.size < 800) reject(new Error('导出结果是空的，请先生成行程再试'))
+      else resolve(blob)
+    }, 'image/jpeg', quality)
+  })
+}
+
 export async function exportImage(html: string, device: ExportDevice = 'phone') {
   if (!html.trim()) throw new Error('导出结果是空的，请先生成行程再试')
+  const mobile = needsMobileImageSheet()
   const width = device === 'desktop' ? 800 : 390
   const { iframe, doc, win } = await openExportFrame(html, width)
   let restore = () => {}
   try {
-    await waitImages(doc)
+    await shrinkExportMedia(doc, mobile ? 720 : 1200)
     restore = lockPreview(iframe, doc, width)
     await nextFrame(win)
-    const height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 14000)
-    const mobile = needsMobileImageSheet()
-    // iOS 画布大约 1600 万像素；手机上 2x 长图会直接失败且不弹下载框。
-    let pixelRatio = height * 2 > 16000 || mobile ? 1 : 2
-    if (width * height * pixelRatio * pixelRatio > 16_000_000) pixelRatio = 1
-    const lib = await loadLib(win, doc)
-    const dataUrl = await withTimeout(
-      lib.toJpeg(doc.body, {
-        quality: 0.88,
+    let height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 14000)
+    // 手机画布高度大约到 4096 就会失败。先缩小整页再截，比截完再压更稳。
+    if (mobile && height > 3600) {
+      const zoom = 3600 / height
+      doc.documentElement.style.setProperty('zoom', String(zoom))
+      await nextFrame(win)
+      height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 4096)
+    }
+    const fitted = outputSize(width, height, mobile)
+    const lib = await import('html-to-image')
+    const canvas = await withTimeout(
+      lib.toCanvas(doc.body, {
         backgroundColor: '#f4efe6',
         width,
         height,
-        pixelRatio,
+        canvasWidth: fitted.canvasWidth,
+        canvasHeight: fitted.canvasHeight,
+        pixelRatio: 1,
         cacheBust: false,
         skipFonts: true,
         filter: skipCapture,
@@ -297,15 +353,15 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
           maxWidth: `${width}px`,
           boxSizing: 'border-box',
         },
-        imagePlaceholder: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+        imagePlaceholder: IMAGE_PLACEHOLDER,
         onImageErrorHandler: () => undefined,
       }),
-      45000,
+      mobile ? 28000 : 45000,
       '导出超时：页面太长或图片未加载完，请等预览出图后再试',
     )
-    if (!dataUrl || dataUrl.length < 800) throw new Error('导出结果是空的，请先生成行程再试')
+    const blob = await canvasToJpeg(canvas, mobile ? 0.8 : 0.88)
     return {
-      blob: jpegBlob(dataUrl),
+      blob,
       filename: `${safeFilename(pageTitle(html))}.jpg`,
     }
   } finally {

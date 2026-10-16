@@ -1,5 +1,6 @@
 // 把当前行程页存成 /s/:id ，复制链接即可发到微信聊天；
 // 在微信里打开后，右上角菜单可以再发给好友或分享到朋友圈。
+import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -246,9 +247,10 @@ function wechatBoot(config, card) {
 </script>`
 }
 
-export function decorateShareHtml(html, { pageUrl, origin, wechat = null } = {}) {
+export function decorateShareHtml(html, { pageUrl, origin, wechat = null, cardImage = '' } = {}) {
   const meta = extractShareMeta(html)
-  const image = shareCardImage(origin, meta.image)
+  // 微信缩略图不吃超大图；有专用小图就用小图，否则退回原图地址
+  const image = String(cardImage || '').trim() || shareCardImage(origin, meta.image)
   const tags = [
     `<meta name="description" content="${escAttr(meta.description)}">`,
     '<meta property="og:type" content="website">',
@@ -351,6 +353,110 @@ export function matchShare(pathname) {
   return matched ? matched[1] : ''
 }
 
+export function matchShareCard(pathname) {
+  const matched = String(pathname || '').match(/^\/s\/([a-f0-9]{16})\/card\.jpg$/)
+  return matched ? matched[1] : ''
+}
+
+const ASSET_ROOT = path.resolve(__dirname, '..', 'travel-assets')
+
+/** 只允许读项目里的 travel-assets，避免分享缩略图变成任意文件读取。 */
+export function localShareAsset(src) {
+  let value = String(src || '').trim().split(/[?#]/)[0]
+  if (!value || /^https?:/i.test(value) || value.includes('..')) return ''
+  value = value.replace(/^\.?\//, '')
+  if (!value.startsWith('travel-assets/')) return ''
+  const file = path.resolve(ASSET_ROOT, value.slice('travel-assets/'.length))
+  if (file !== ASSET_ROOT && !file.startsWith(`${ASSET_ROOT}${path.sep}`)) return ''
+  return file
+}
+
+function runFfmpeg(input, output) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-y', '-hide_banner', '-loglevel', 'error',
+      '-i', input,
+      '-frames:v', '1',
+      '-vf', 'scale=480:-2',
+      '-q:v', '6',
+      output,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] })
+    let err = ''
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL')
+      reject(new Error('缩略图生成超时'))
+    }, 20000)
+    proc.stderr.on('data', (chunk) => { err += chunk })
+    proc.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    proc.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve()
+      else reject(new Error(err.trim() || `ffmpeg ${code}`))
+    })
+  })
+}
+
+async function cardSourceFile(html) {
+  const meta = extractShareMeta(html)
+  const local = localShareAsset(meta.image)
+  if (local && fs.existsSync(local)) return { file: local, temp: false }
+  const remote = upstreamHttps(meta.image)
+  if (!remote) return null
+  const res = await fetch(remote, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) return null
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (!buf.length || buf.length > 12 * 1024 * 1024) return null
+  const tmp = path.join(os.tmpdir(), `tm-card-${crypto.randomBytes(6).toString('hex')}`)
+  fs.writeFileSync(tmp, buf)
+  return { file: tmp, temp: true }
+}
+
+export async function ensureShareCard(id, dir = SHARE_DIR) {
+  const html = readShareHtml(id, dir)
+  if (!html) return ''
+  const root = path.resolve(dir)
+  const out = path.join(root, `${id}.card.jpg`)
+  const htmlFile = shareFile(id, root)
+  if (fs.existsSync(out) && htmlFile && fs.statSync(out).mtimeMs >= fs.statSync(htmlFile).mtimeMs) return out
+  const source = await cardSourceFile(html)
+  if (!source) return ''
+  const tmp = `${out}.${process.pid}.tmp.jpg`
+  try {
+    await runFfmpeg(source.file, tmp)
+    if (!fs.existsSync(tmp) || fs.statSync(tmp).size < 400) return ''
+    fs.renameSync(tmp, out)
+    return out
+  } finally {
+    if (source.temp) fs.rmSync(source.file, { force: true })
+    if (fs.existsSync(tmp)) fs.rmSync(tmp, { force: true })
+  }
+}
+
+export async function handleShareCard(req, res) {
+  const url = new URL(req.url || '/', 'http://127.0.0.1')
+  const id = matchShareCard(url.pathname)
+  const send = (code) => {
+    res.statusCode = code
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.end()
+  }
+  if (!id) return send(404)
+  try {
+    const file = await ensureShareCard(id)
+    if (!file) return send(404)
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    fs.createReadStream(file).pipe(res)
+  } catch {
+    send(404)
+  }
+}
+
 export async function handleShareGet(req, res) {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   const id = matchShare(url.pathname)
@@ -365,8 +471,9 @@ export async function handleShareGet(req, res) {
   }
   const origin = requestOrigin(req)
   const pageUrl = `${origin}${url.pathname.replace(/\/$/, '')}${url.search}`
+  const cardImage = origin ? `${origin}/s/${id}/card.jpg` : ''
   const wechat = await wechatConfigFor(pageUrl.split('#')[0])
-  sendHtml(res, 200, decorateShareHtml(html, { pageUrl, origin, wechat }), wechat ? 'private, no-store' : 'public, max-age=86400')
+  sendHtml(res, 200, decorateShareHtml(html, { pageUrl, origin, wechat, cardImage }), wechat ? 'private, no-store' : 'public, max-age=86400')
 }
 
 function readBody(req, limit) {
