@@ -3,8 +3,9 @@ import { renderSVG } from 'uqr'
 import { attachmentsToPrompt, filesFromPaste, prettyBytes, readAttachments, wantsVision, type Attachment } from './lib/attach'
 import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type ServerConfig } from './lib/chat'
 import { copyText } from './lib/clipboard'
-import { downloadBlob, exportH5, exportImage, needsMobileImageSheet, publishShare, shareJpegFile, shareReach, shareTripLink, type ShareCard } from './lib/export'
-import { formatShareSnippet, sharePlainText } from './lib/shareSnippet'
+import { downloadBlob, exportH5, exportImage, needsMobileImageSheet, publishShare, shareJpegFile, shareReach, type ShareCard } from './lib/export'
+import { shareH5Card } from './lib/h5Share'
+import { formatShareSnippet } from './lib/shareSnippet'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
 import { fetchResearch, type ResearchBrief } from './lib/research'
@@ -50,8 +51,8 @@ const OWN_KEY_HINT = /改用自己的(?:模型)?密钥|次已经用完|免费额
 const ERROR_BUBBLE = /^(出错了：|密钥没通过)/
 
 const EXAMPLES = [
-  '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋',
   '深圳周边3天2晚、一家三口，偏亲子与海边，住较场尾',
+  '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋',
   '甘南6天5晚、两人轻装，偏徒步、星空、人文、自然和美食，住县城方便出山',
 ]
 
@@ -1482,7 +1483,7 @@ export default function App() {
   }, [shareOpen, shareLinkOpen, shareUrl, shareBusy, shareError])
 
   useEffect(() => {
-    if (!shareOpen || !shareLinkOpen) return
+    if (!shareOpen || !html.trim()) return
     let cancel = false
     setShareUrl('')
     setShareCard({ url: '', title: '', description: '', image: '' })
@@ -1493,7 +1494,7 @@ export default function App() {
       .catch((err) => { if (!cancel) setShareError(err instanceof Error ? err.message : '链接生成失败') })
       .finally(() => { if (!cancel) setShareBusy(false) })
     return () => { cancel = true }
-  }, [shareOpen, shareLinkOpen, html])
+  }, [shareOpen, html])
 
   useEffect(() => () => {
     if (imageExport?.url) URL.revokeObjectURL(imageExport.url)
@@ -1523,15 +1524,51 @@ export default function App() {
     }
   }
 
-  async function onShareSnippet() {
-    if (!shareSnippet) {
+  async function onShareToWeChat() {
+    if (!html.trim()) {
       setShareError('还没有行程可分享，请先生成一页')
       return
     }
     setShareError('')
-    const result = await sharePlainText({ title: trip?.title || '行程', text: shareSnippet })
+    let card = shareUrl
+      ? { ...shareCard, url: shareUrl, title: shareCard.title || trip?.title || '行程' }
+      : null
+    if (!card) {
+      setShareBusy(true)
+      try {
+        const published = await publishShare(html, authTokenRef.current)
+        card = { ...published, title: published.title || trip?.title || '行程' }
+        setShareCard(published)
+        setShareUrl(published.url)
+      } catch (err) {
+        setShareError(err instanceof Error ? err.message : '链接生成失败')
+        return
+      } finally {
+        setShareBusy(false)
+      }
+    }
+    if (shareReach(card.url) === 'local') {
+      setShareError('这是本机地址，好友的微信打不开这张卡片。请用手机能访问的网址打开后再发。')
+      setShareLinkOpen(true)
+      return
+    }
+    if (card.image) void fetch(card.image).catch(() => {})
+    // 已经在微信里：打开分享页，用右上角选好友。这一页带封面标题，才会变成卡片。
+    if (/MicroMessenger/i.test(navigator.userAgent)) {
+      window.location.assign(card.url)
+      return
+    }
+    const result = await shareH5Card(card)
     if (result === 'shared' || result === 'aborted') return
-    await onCopySnippet()
+    // http 页面没有系统分享。只复制链接：微信里粘贴纯链接才会收成卡片。
+    const ok = await copyText(card.url)
+    if (!ok) {
+      setShareLinkOpen(true)
+      setShareError('没有复制成功，请展开下方链接后手动复制')
+      return
+    }
+    showToast('行程链接已复制。到微信里选择好友，粘贴后会显示为卡片')
+    window.location.href = 'weixin://'
   }
 
   async function onShareLongImage() {
@@ -1560,7 +1597,7 @@ export default function App() {
   async function onSendLink() {
     if (!shareUrl) return
     setShareError('')
-    const result = await shareTripLink({
+    const result = await shareH5Card({
       ...shareCard,
       url: shareUrl,
       title: shareCard.title || trip?.title || '行程',
@@ -2262,8 +2299,8 @@ export default function App() {
             <h2 id="share-title">分享行程</h2>
             <p className="share-lead">
               {preferSnippetShare
-                ? '网页不能直接打开微信好友列表或朋友圈。发给好友用「行程文案」，发朋友圈用「长图」。'
-                : '可复制行程文案发给好友；需要完整网页时再生成链接。'}
+                ? '点「发到微信」，在列表里选择好友。对方收到的是带封面的行程卡片。发朋友圈用「分享长图」。'
+                : '点「发到微信」选择好友，对方收到带封面的行程卡片。也可以复制文案，或生成链接。'}
             </p>
             {shareError && <p className="share-note">{shareError}</p>}
 
@@ -2279,10 +2316,10 @@ export default function App() {
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <div className="sheet-actions">
-                  {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
-                    <button type="button" className="primary" onClick={() => void onShareSnippet()}>发到微信</button>
-                  )}
-                  <button type="button" className={typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? '' : 'primary'} onClick={() => void onCopySnippet()}>复制文案</button>
+                  <button type="button" className="primary" disabled={shareBusy || !html.trim()} onClick={() => void onShareToWeChat()}>
+                    {shareBusy ? '准备卡片…' : '发到微信'}
+                  </button>
+                  <button type="button" onClick={() => void onCopySnippet()}>复制文案</button>
                   <button type="button" disabled={imageBusy || !html.trim()} onClick={() => void onShareLongImage()}>
                     {imageBusy ? '出图中…' : '分享长图'}
                   </button>

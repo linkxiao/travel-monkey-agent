@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { decorateShareHtml, extractShareMeta, localShareAsset, publishShareHtml, readShareHtml, requestOrigin, signWechatUrl } from './share.mjs'
+import { decorateShareHtml, extractShareMeta, isLinkCrawler, localShareAsset, publishShareHtml, readShareHtml, requestOrigin, shareCardDocument, signWechatUrl } from './share.mjs'
 
 const page = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><title>蜀道 · 行程计划</title>
@@ -44,6 +44,25 @@ test('share card can point at a small same-origin thumbnail', () => {
   })
   assert.match(html, /property="og:image" content="http:\/\/119\.91\.204\.216\/s\/abc\/card\.jpg"/)
   assert.match(html, /itemprop="image" content="http:\/\/119\.91\.204\.216\/s\/abc\/card\.jpg"/)
+})
+
+test('wechat crawler gets a compact card document', () => {
+  assert.equal(isLinkCrawler('Mozilla/5.0 MicroMessenger/8.0'), true)
+  assert.equal(isLinkCrawler('Mozilla/5.0 (iPhone) Safari'), false)
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49(0x1800312e) NetType/WIFI Language/zh_CN'
+  const android = 'Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/122.0.0.0 Mobile Safari/537.36 XWEB/1220053 MMWEBSDK/20240404 MMWEBID/1234 MicroMessenger/8.0.49 Weixin NetType/WIFI Language/zh_CN'
+  assert.equal(isLinkCrawler(iphone), false)
+  assert.equal(isLinkCrawler(android), false)
+  const html = shareCardDocument({
+    title: '京都奈良',
+    description: '寺院与樱花',
+    pageUrl: 'http://119.91.204.216/s/abc?v=3',
+    image: 'http://119.91.204.216/s/abc/card.jpg',
+  })
+  assert.match(html, /property="og:title" content="京都奈良"/)
+  assert.match(html, /property="og:description" content="寺院与樱花"/)
+  assert.match(html, /property="og:image" content="http:\/\/119\.91\.204\.216\/s\/abc\/card\.jpg"/)
+  assert.match(html, /og:image:width" content="300"/)
 })
 
 test('local share asset stays inside travel-assets', () => {

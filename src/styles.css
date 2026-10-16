@@ -1451,6 +1451,8 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     border-top: 1px solid rgba(226, 233, 245, 0.08);
     background: linear-gradient(180deg, rgba(11, 18, 38, 0.92) 0%, #0b1226 28%);
     box-shadow: 0 -8px 24px rgba(5, 11, 31, 0.35);
+    /* viewport-fit=cover 会铺到Home指示条下面，底边留白后输入框才能整块看见 */
+    padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
   }
   .pane-dock-cta {
     display: flex;
@@ -1476,8 +1478,36 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
   .pref-pick .plan-ask-bar {
     display: none;
   }
-  .empty { padding-top: 8px; }
-  .empty h2 { font-size: 22px; }
+  .empty { padding-top: 4px; }
+  .empty h2 { margin-bottom: 12px; font-size: 22px; }
+  /* 三个走法收成一行：名称在左，说明跟在后面，矮屏不再各占两行 */
+  .persona-list { gap: 6px; }
+  .persona-list button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+  .persona-list b { flex: none; font-size: 14px; letter-spacing: 0.04em; }
+  .persona-list span {
+    min-width: 0;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .empty-k { margin: 16px 0 2px; }
+  .example-list button {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 0;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .plan-ask {
     margin: 0 16px 10px;
     padding: 14px 12px;
@@ -1489,8 +1519,8 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
   }
   /* 单行输入 + 右侧发送，矮屏也能看到完整操作 */
   .composer {
-    margin: 8px 16px 0;
-    padding: 8px 8px 8px 12px;
+    margin: 10px 16px 0;
+    padding: 10px 8px 10px 14px;
   }
   .composer-row {
     display: flex;
@@ -1500,11 +1530,11 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
   .composer textarea {
     flex: 1;
     min-width: 0;
-    min-height: 40px;
-    max-height: 120px;
-    padding: 8px 0;
+    min-height: 52px;
+    max-height: 140px;
+    padding: 12px 0;
     font-size: 16px; /* 避免 iOS 聚焦时整页放大 */
-    line-height: 1.4;
+    line-height: 1.45;
     field-sizing: content;
   }
   .composer:focus-within textarea {
@@ -1629,11 +1659,6 @@ button.ghost:hover:not(:disabled) { color: var(--paper); border-color: rgba(226,
     max-width: 100%;
   }
   .page-loading { inset: 0 10px 10px; }
-  .example-list button {
-    white-space: normal;
-    line-height: 1.45;
-    padding: 10px 0;
-  }
   .toast {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     max-width: calc(100% - 32px);

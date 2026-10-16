@@ -258,6 +258,9 @@ export function decorateShareHtml(html, { pageUrl, origin, wechat = null, cardIm
     `<meta property="og:description" content="${escAttr(meta.description)}">`,
     `<meta property="og:url" content="${escAttr(pageUrl)}">`,
     image ? `<meta property="og:image" content="${escAttr(image)}">` : '',
+    image ? '<meta property="og:image:type" content="image/jpeg">' : '',
+    image ? '<meta property="og:image:width" content="300">' : '',
+    image ? '<meta property="og:image:height" content="300">' : '',
     image ? `<link rel="image_src" href="${escAttr(image)}">` : '',
     `<meta itemprop="name" content="${escAttr(meta.title)}">`,
     `<meta itemprop="description" content="${escAttr(meta.description)}">`,
@@ -314,31 +317,69 @@ export async function wechatConfigFor(pageUrl) {
   }
 }
 
-function sendHtml(res, code, html, cache) {
+function sendHtml(res, code, html, cache, { sandbox = true } = {}) {
   res.statusCode = code
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('X-Frame-Options', 'SAMEORIGIN')
-  // sandbox 无 allow-same-origin：分享页脚本跑在独立源，读不到主站 localStorage 里的登录 token
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
-      "default-src 'none'",
-      "img-src * data: blob:",
-      "media-src * data: blob:",
-      "style-src 'unsafe-inline' https: data:",
-      "font-src https: data:",
-      "script-src 'unsafe-inline' 'self' https://res.wx.qq.com",
-      "connect-src https: 'self'",
-      "base-uri 'self'",
-      "form-action 'none'",
-      "frame-ancestors 'none'",
-    ].join('; '),
-  )
+  // sandbox 无 allow-same-origin：分享页脚本跑在独立源，读不到主站 localStorage 里的登录 token。
+  // 微信抓卡片时会因为 sandbox 放弃解析，抓取请求不带这条。
+  if (sandbox) {
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+        "default-src 'none'",
+        "img-src * data: blob:",
+        "media-src * data: blob:",
+        "style-src 'unsafe-inline' https: data:",
+        "font-src https: data:",
+        "script-src 'unsafe-inline' 'self' https://res.wx.qq.com",
+        "connect-src https: 'self'",
+        "base-uri 'self'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+    )
+  }
   res.setHeader('Cache-Control', cache)
   res.end(html)
+}
+
+/** 人在微信里点开链接。UA 同样带 MicroMessenger，不能当成抓卡片的爬虫。 */
+export function isWeChatBrowser(ua) {
+  const s = String(ua || '')
+  if (!/MicroMessenger/i.test(s)) return false
+  return /MMWEBSDK|MMWEBID|\bXWEB\/|WindowsWechat|MacWechat|\bWeixin\b|Language\/|iPhone|iPad|Android|\bMobile\b/i.test(s)
+}
+
+export function isLinkCrawler(ua) {
+  const s = String(ua || '')
+  if (isWeChatBrowser(s)) return false
+  return /MicroMessenger|WeChat|facebookexternalhit|Twitterbot|TelegramBot|WhatsApp|Slackbot|Discordbot|LinkedInBot|Bytespider/i.test(s)
+}
+
+export function shareCardDocument({ title, description, pageUrl, image }) {
+  const name = escAttr(title || '行程')
+  const desc = escAttr(description || '打开查看每天的路线、三餐和住宿。')
+  const img = escAttr(image || '')
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>${name}</title>
+<meta name="description" content="${desc}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${name}">
+<meta property="og:description" content="${desc}">
+<meta property="og:url" content="${escAttr(pageUrl)}">
+${img ? `<meta property="og:image" content="${img}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="300">
+<meta property="og:image:height" content="300">
+<meta itemprop="image" content="${img}">` : ''}
+<meta itemprop="name" content="${name}">
+<meta itemprop="description" content="${desc}">
+</head><body>${img ? `<img src="${img}" alt="">` : ''}<p>${desc}</p></body></html>`
 }
 
 const MISSING = `<!DOCTYPE html>
@@ -377,8 +418,9 @@ function runFfmpeg(input, output) {
       '-y', '-hide_banner', '-loglevel', 'error',
       '-i', input,
       '-frames:v', '1',
-      '-vf', 'scale=480:-2',
-      '-q:v', '6',
+      // 微信缩略图要求至少 300×300，横幅原图会被丢弃，整张卡片就退回成裸链接
+      '-vf', 'scale=300:300:force_original_aspect_ratio=increase,crop=300:300',
+      '-q:v', '5',
       output,
     ], { stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
@@ -418,7 +460,7 @@ export async function ensureShareCard(id, dir = SHARE_DIR) {
   const html = readShareHtml(id, dir)
   if (!html) return ''
   const root = path.resolve(dir)
-  const out = path.join(root, `${id}.card.jpg`)
+  const out = path.join(root, `${id}.card300.jpg`)
   const htmlFile = shareFile(id, root)
   if (fs.existsSync(out) && htmlFile && fs.statSync(out).mtimeMs >= fs.statSync(htmlFile).mtimeMs) return out
   const source = await cardSourceFile(html)
@@ -447,11 +489,13 @@ export async function handleShareCard(req, res) {
   try {
     const file = await ensureShareCard(id)
     if (!file) return send(404)
+    const body = fs.readFileSync(file)
     res.statusCode = 200
     res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Content-Length', body.length)
     res.setHeader('Cache-Control', 'public, max-age=86400')
     res.setHeader('X-Content-Type-Options', 'nosniff')
-    fs.createReadStream(file).pipe(res)
+    res.end(body)
   } catch {
     send(404)
   }
@@ -472,6 +516,16 @@ export async function handleShareGet(req, res) {
   const origin = requestOrigin(req)
   const pageUrl = `${origin}${url.pathname.replace(/\/$/, '')}${url.search}`
   const cardImage = origin ? `${origin}/s/${id}/card.jpg` : ''
+  const meta = extractShareMeta(html)
+  if (isLinkCrawler(req.headers['user-agent'])) {
+    sendHtml(res, 200, shareCardDocument({
+      title: meta.title,
+      description: meta.description,
+      pageUrl,
+      image: cardImage,
+    }), 'public, max-age=300', { sandbox: false })
+    return
+  }
   const wechat = await wechatConfigFor(pageUrl.split('#')[0])
   sendHtml(res, 200, decorateShareHtml(html, { pageUrl, origin, wechat, cardImage }), wechat ? 'private, no-store' : 'public, max-age=86400')
 }
@@ -508,13 +562,14 @@ export async function handleSharePublish(req, res) {
     const id = publishShareHtml(body.html)
     const origin = requestOrigin(req)
     const meta = extractShareMeta(body.html)
-    const page = origin ? `${origin}/s/${id}` : `/s/${id}`
+    // ?v= 让微信把这条当成新链接重新抓卡片，避免沿用之前抓失败的缓存
+    const page = origin ? `${origin}/s/${id}?v=3` : `/s/${id}?v=3`
     send(200, {
       id,
       url: page,
       title: meta.title,
       description: meta.description,
-      image: absoluteUrl(origin, meta.image),
+      image: origin ? `${origin}/s/${id}/card.jpg` : '',
     })
   } catch (err) {
     send(err?.status || 400, { error: err?.message || '链接生成失败' })
