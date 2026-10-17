@@ -389,6 +389,13 @@ const MISSING = `<!DOCTYPE html>
 <p style="margin:0;line-height:1.7;color:#5d6578">请让对方重新生成分享链接。</p></main>
 </body></html>`
 
+/** 换版本号，让微信把链接当成新地址重新抓，不沿用抓失败的缓存。 */
+export const SHARE_REV = '4'
+
+export function sharePagePath(id) {
+  return `/s/${id}?v=${SHARE_REV}`
+}
+
 export function matchShare(pathname) {
   const matched = String(pathname || '').match(/^\/s\/([a-f0-9]{16})\/?$/)
   return matched ? matched[1] : ''
@@ -514,7 +521,16 @@ export async function handleShareGet(req, res) {
     return
   }
   const origin = requestOrigin(req)
-  const pageUrl = `${origin}${url.pathname.replace(/\/$/, '')}${url.search}`
+  const canonical = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
+  const here = `${url.pathname.replace(/\/$/, '')}${url.search}`
+  if (here !== sharePagePath(id)) {
+    res.statusCode = 302
+    res.setHeader('Location', canonical)
+    res.setHeader('Cache-Control', 'no-store')
+    res.end()
+    return
+  }
+  const pageUrl = canonical
   const cardImage = origin ? `${origin}/s/${id}/card.jpg` : ''
   const meta = extractShareMeta(html)
   if (isLinkCrawler(req.headers['user-agent'])) {
@@ -563,7 +579,7 @@ export async function handleSharePublish(req, res) {
     const origin = requestOrigin(req)
     const meta = extractShareMeta(body.html)
     // ?v= 让微信把这条当成新链接重新抓卡片，避免沿用之前抓失败的缓存
-    const page = origin ? `${origin}/s/${id}?v=3` : `/s/${id}?v=3`
+    const page = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
     send(200, {
       id,
       url: page,
