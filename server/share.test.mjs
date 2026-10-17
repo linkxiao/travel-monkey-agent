@@ -33,6 +33,7 @@ test('share page carries a WeChat card and a root base url', () => {
   assert.match(html, /property="og:description" content="剑门关 汉中 西安"/)
   assert.match(html, /<base href="\/">/)
   assert.match(html, /id="tm-wx-share"/)
+  assert.match(html, /复制链接/)
   assert.doesNotMatch(html, /jweixin/)
 })
 
@@ -61,7 +62,7 @@ test('wechat crawler gets a compact card document', () => {
   const html = shareCardDocument({
     title: '京都奈良',
     description: '寺院与樱花',
-    pageUrl: 'http://119.91.204.216/s/abc?v=5',
+    pageUrl: 'http://119.91.204.216/s/abc?v=6',
     image: 'http://119.91.204.216/s/abc/card.jpg',
   })
   assert.match(html, /property="og:title" content="京都奈良"/)

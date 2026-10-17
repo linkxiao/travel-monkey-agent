@@ -85,10 +85,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/share') {
     return handleSharePublish(req, res)
   }
-  if (req.method === 'GET' && matchShareCard(url.pathname)) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && matchShareCard(url.pathname)) {
     return handleShareCard(req, res)
   }
-  if (req.method === 'GET' && matchShare(url.pathname)) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && matchShare(url.pathname)) {
     return handleShareGet(req, res)
   }
   if (url.pathname === '/travel-photo') {

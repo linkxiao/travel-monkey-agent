@@ -1552,23 +1552,22 @@ export default function App() {
       setShareLinkOpen(true)
       return
     }
-    if (card.image) void fetch(card.image).catch(() => {})
-    // 已经在微信里：打开分享页，用右上角选好友。这一页带封面标题，才会变成卡片。
-    if (/MicroMessenger/i.test(navigator.userAgent)) {
-      window.location.assign(card.url)
-      return
-    }
+    if (card.image) void fetch(card.image, { method: 'GET', cache: 'reload' }).catch(() => {})
+    // 微信规则：打开蓝链后再点右上角，只会发出裸 URL。
+    // 卡片来自「聊天里粘贴纯链接」后微信服务器抓取 OG（标题/摘要/封面）。
+    // 所以这里绝不跳进分享页让用户去点 ···。
     const result = await shareH5Card(card)
     if (result === 'shared' || result === 'aborted') return
-    // http 页面没有系统分享。只复制链接：微信里粘贴纯链接才会收成卡片。
     const ok = await copyText(card.url)
     if (!ok) {
       setShareLinkOpen(true)
-      setShareError('没有复制成功，请展开下方链接后手动复制')
+      setShareError('没有复制成功，请展开下方链接后手动复制，再到微信聊天里粘贴')
       return
     }
-    showToast('行程链接已复制。到微信里选择好友，粘贴后会显示为卡片')
-    window.location.href = 'weixin://'
+    showToast('链接已复制。打开微信选好友，在对话框粘贴发送，才会出现标题和封面')
+    if (!/MicroMessenger/i.test(navigator.userAgent)) {
+      window.location.href = 'weixin://'
+    }
   }
 
   async function onShareLongImage() {
@@ -2299,8 +2298,8 @@ export default function App() {
             <h2 id="share-title">分享行程</h2>
             <p className="share-lead">
               {preferSnippetShare
-                ? '点「发到微信」，在列表里选择好友。对方收到的是带封面的行程卡片。发朋友圈用「分享长图」。'
-                : '点「发到微信」选择好友，对方收到带封面的行程卡片。也可以复制文案，或生成链接。'}
+                ? '点「发到微信」会复制行程链接。请到微信对话框里粘贴发送，才会出现标题、摘要和封面；不要打开链接后再点右上角。发朋友圈用「分享长图」。'
+                : '点「发到微信」复制链接，到微信对话框粘贴发送，才会出现标题、摘要和封面。打开链接后再点右上角只会发出网址。'}
             </p>
             {shareError && <p className="share-note">{shareError}</p>}
 

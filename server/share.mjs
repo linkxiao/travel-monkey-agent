@@ -208,23 +208,74 @@ export function readShareHtml(id, dir = SHARE_DIR) {
   return fs.readFileSync(file, 'utf8')
 }
 
-const SHARE_BAR = `
+/** 微信里「打开蓝链 → 点右上角」只会发出裸链接；卡片靠聊天里粘贴后由微信服务器抓 OG。 */
+function shareBar(card) {
+  return `
 <style data-tm-share="1">
 #tm-wx-share{position:sticky;top:0;z-index:99999;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:10px 14px;background:#0e1530;color:#e9eef6;font:13px/1.45 "Noto Sans SC",sans-serif}
 #tm-wx-share[hidden]{display:none}
-#tm-wx-share button{border:0;background:transparent;color:#ffb088;font:inherit;padding:4px 2px;white-space:nowrap}
+#tm-wx-share button{border:0;border-radius:999px;background:#ffb088;color:#0e1530;font:inherit;font-weight:600;padding:6px 12px;white-space:nowrap}
+#tm-wx-share .tm-wx-tip{flex:1;min-width:0}
 </style>
 <div id="tm-wx-share" hidden>
-  <span>点右上角 ··· ，发送给朋友或分享到朋友圈</span>
-  <button type="button" onclick="this.parentNode.hidden=true">知道了</button>
+  <span class="tm-wx-tip">不要点右上角。请点「复制链接」，回到聊天粘贴发送，才会出现标题和封面</span>
+  <button type="button" id="tm-wx-copy">复制链接</button>
 </div>
 <script>
-  if (/MicroMessenger/i.test(navigator.userAgent) || /[?&]wx=1(?:&|$)/.test(location.search)) {
-    var bar = document.getElementById('tm-wx-share');
-    if (bar) bar.hidden = false;
+(function () {
+  var card = ${jsonForScript(card)};
+  var inWx = /MicroMessenger/i.test(navigator.userAgent) || /[?&]wx=1(?:&|$)/.test(location.search);
+  var bar = document.getElementById('tm-wx-share');
+  var btn = document.getElementById('tm-wx-copy');
+  if (inWx && bar) bar.hidden = false;
+  function copyLink() {
+    var link = card.link || location.href.split('#')[0];
+    function ok() { if (btn) btn.textContent = '已复制'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(ok).catch(function () {
+        var input = document.createElement('input');
+        input.value = link;
+        document.body.appendChild(input);
+        input.select();
+        try { document.execCommand('copy'); ok(); } catch (e) {}
+        input.remove();
+      });
+      return;
+    }
+    var input = document.createElement('input');
+    input.value = link;
+    document.body.appendChild(input);
+    input.select();
+    try { document.execCommand('copy'); ok(); } catch (e) {}
+    input.remove();
   }
-</script>
-`
+  if (btn) btn.addEventListener('click', copyLink);
+  function bindBridge() {
+    if (!window.WeixinJSBridge || !card) return;
+    WeixinJSBridge.on('menu:share:appmessage', function () {
+      WeixinJSBridge.invoke('sendAppMessage', {
+        title: card.title || document.title,
+        desc: card.desc || '',
+        link: card.link || location.href.split('#')[0],
+        img_url: card.imgUrl || ''
+      }, function () {});
+    });
+    WeixinJSBridge.on('menu:share:timeline', function () {
+      WeixinJSBridge.invoke('shareTimeline', {
+        title: card.title || document.title,
+        link: card.link || location.href.split('#')[0],
+        img_url: card.imgUrl || ''
+      }, function () {});
+    });
+  }
+  if (typeof WeixinJSBridge === 'undefined') {
+    document.addEventListener('WeixinJSBridgeReady', bindBridge, false);
+  } else {
+    bindBridge();
+  }
+})();
+</script>`
+}
 
 function wechatBoot(config, card) {
   if (!config?.appId || !config.signature) return ''
@@ -270,9 +321,11 @@ export function decorateShareHtml(html, { pageUrl, origin, wechat = null, cardIm
   let next = String(html || '')
   if (/<head[^>]*>/i.test(next)) next = next.replace(/<head[^>]*>/i, (head) => `${head}\n${tags}`)
   else next = `${tags}\n${next}`
-  if (/<body[^>]*>/i.test(next)) next = next.replace(/<body[^>]*>/i, (body) => `${body}\n${SHARE_BAR}`)
-  else next = `${SHARE_BAR}\n${next}`
-  const boot = wechatBoot(wechat, { title: meta.title, desc: meta.description, link: pageUrl, imgUrl: image })
+  const card = { title: meta.title, desc: meta.description, link: pageUrl, imgUrl: image }
+  const bar = shareBar(card)
+  if (/<body[^>]*>/i.test(next)) next = next.replace(/<body[^>]*>/i, (body) => `${body}\n${bar}`)
+  else next = `${bar}\n${next}`
+  const boot = wechatBoot(wechat, card)
   if (boot) {
     if (/<\/body>/i.test(next)) next = next.replace(/<\/body>/i, `${boot}\n</body>`)
     else next += boot
@@ -406,7 +459,7 @@ const MISSING = `<!DOCTYPE html>
 </body></html>`
 
 /** 换版本号，让微信把链接当成新地址重新抓，不沿用抓失败的缓存。 */
-export const SHARE_REV = '5'
+export const SHARE_REV = '6'
 
 export function sharePagePath(id) {
   return `/s/${id}?v=${SHARE_REV}`
@@ -518,6 +571,11 @@ export async function handleShareCard(req, res) {
     res.setHeader('Content-Length', body.length)
     res.setHeader('Cache-Control', 'public, max-age=86400')
     res.setHeader('X-Content-Type-Options', 'nosniff')
+    // 微信抓封面常先发 HEAD；以前 HEAD 落到站点 HTML，封面会被直接判失败
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
     res.end(body)
   } catch {
     send(404)
@@ -586,6 +644,7 @@ export async function handleSharePublish(req, res) {
     const id = publishShareHtml(body.html)
     const origin = requestOrigin(req)
     const meta = extractShareMeta(body.html)
+    try { await ensureShareCard(id) } catch { /* 首次抓取时再生成 */ }
     // ?v= 让微信把这条当成新链接重新抓卡片，避免沿用之前抓失败的缓存
     const page = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
     send(200, {
