@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { nextMonthFirst } from './dates.mjs'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -590,7 +591,7 @@ function normalizeTrip(trip) {
   const out = JSON.parse(JSON.stringify(trip))
   out.title = tripTitle(out)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(out.startDate || '')) || Number.isNaN(Date.parse(`${out.startDate}T00:00:00Z`))) {
-    out.startDate = new Date().toISOString().slice(0, 10)
+    out.startDate = nextMonthFirst()
   }
   out.disclaimer = out.disclaimer && String(out.disclaimer).length >= 20 ? out.disclaimer : DEFAULT_DISCLAIMER
   out.tips = Array.isArray(out.tips) ? out.tips.filter(Boolean).map(String) : []

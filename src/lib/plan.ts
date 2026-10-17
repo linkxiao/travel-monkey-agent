@@ -1,3 +1,4 @@
+import { nextMonthFirst } from '../../server/dates.mjs'
 import { detectPersona } from './persona.ts'
 import type { Trip } from './trip'
 import { statedDays } from './route.ts'
@@ -85,7 +86,7 @@ export function tripFromPlan(plan: string, ask = ''): Trip | null {
     || `${days.length} 日行程`
   return {
     title,
-    startDate: String(days[0].date || '') || new Date().toISOString().slice(0, 10),
+    startDate: String(days[0].date || '') || nextMonthFirst(),
     persona: detectPersona(text),
     disclaimer: '本行程按已确认大纲生成，时间与价格为参考，出发前请自行核实，不能代订。',
     days,

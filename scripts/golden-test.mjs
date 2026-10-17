@@ -3,6 +3,7 @@
 import assert from 'node:assert'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
+import { addIsoDays, hasWrittenDate, nextMonthFirst, stampUndatedTrip } from '../server/dates.mjs'
 import { dayBrief, normalizeTrip, tripTitle } from '../server/viz.mjs'
 import { askTitle, tripFromPlan } from '../src/lib/plan.ts'
 import { answeredAskKeys, extractAskItems, omitAnsweredAsks } from '../src/lib/ask.ts'
@@ -743,6 +744,23 @@ ok('大纲兜底标题不拿待确认问句', tripFromPlan(askPlan).title === '1
   ok('答过的确认题不再抽成卡片', omitAnsweredAsks(again, keys).length === 0 && again.length === 1)
 }
 ok('大纲兜底标题用用户第一句话', tripFromPlan(askPlan, '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋').title === '京都奈良 5 日 · 寺院与樱花')
+{
+  const start = nextMonthFirst(new Date('2026-10-17T01:00:00Z'))
+  ok('十月之后默认下个月1号', start === '2026-11-01')
+  ok('十二月跨到次年1月1号', nextMonthFirst(new Date('2026-12-15T04:00:00Z')) === '2027-01-01')
+  ok('几月几日算写了日期', hasWrittenDate('10月20号出发') && hasWrittenDate('2026-10-20') && !hasWrittenDate('深圳周边3天2晚、一家三口'))
+  const bare = normalizeTrip({ title: '深圳周边', days: [{ theme: '较场尾' }, { theme: '返程' }] })
+  const todayStart = nextMonthFirst()
+  ok('空出发日从下个月1号顺延', bare.startDate === todayStart && bare.days[0].date === todayStart && bare.days[1].date === addIsoDays(todayStart, 1))
+  const rewritten = { startDate: '2026-10-17', days: [{ date: '2026-10-17' }, { date: '2026-10-18' }] }
+  stampUndatedTrip(rewritten, '深圳周边3天2晚', new Date('2026-10-17T01:00:00Z'))
+  ok('没写日期就把模型填的今天改掉', rewritten.startDate === '2026-11-01' && rewritten.days[1].date === '2026-11-02')
+  const kept = { startDate: '2026-10-20', days: [{ date: '2026-10-20' }] }
+  stampUndatedTrip(kept, '10月20号出发，深圳周边')
+  ok('写了日期的行程保持原样', kept.startDate === '2026-10-20' && kept.days[0].date === '2026-10-20')
+  const outlined = tripFromPlan('人格：旅居\nD1：较场尾 / 沙滩 / 午休 / 海鲜 / 住较场尾 / 早·A / 午·B / 晚·C')
+  ok('大纲没写日期时兜底也是下个月1号', outlined.startDate === nextMonthFirst())
+}
 ok('第一句话标题：目的地带周边、主题取前两项', askTitle('深圳周边3天2晚、一家三口，偏亲子与海边，住较场尾', 3) === '深圳周边 3 日 · 亲子与海边')
 ok('第一句话认不出目的地就不硬凑', askTitle('帮我规划一下下个月出去玩的行程，想轻松一点的那种安排', 2) === '')
 ok('模型写成问句的标题会被换掉', tripTitle({ title: '1. 樱花季具体日期定了吗？', days: [{ theme: '京都岚山' }, { theme: '奈良' }] }) === '京都 2 日行程')
