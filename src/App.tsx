@@ -109,6 +109,7 @@ export default function App() {
   const [shareError, setShareError] = useState('')
   const [shareLinkOpen, setShareLinkOpen] = useState(false)
   const [imageBusy, setImageBusy] = useState(false)
+  const exportEpoch = useRef(0)
   const [imageExport, setImageExport] = useState<{ url: string; filename: string; blob: Blob } | null>(null)
   const shareSnippetRef = useRef<HTMLTextAreaElement>(null)
   const shareFoldRef = useRef<HTMLDetailsElement>(null)
@@ -774,8 +775,15 @@ export default function App() {
     })
   }
 
+  function invalidateExport() {
+    exportEpoch.current += 1
+    setImageBusy(false)
+    setError((prev) => (/^导出超时|^预览尚未就绪/.test(prev) ? '' : prev))
+  }
+
   async function runFill(plan: string, fresh = false, userText = '') {
     const runId = runIdRef.current
+    invalidateExport()
     setGenerating(true)
     showWait('正在按确认的安排填写行程')
     try {
@@ -791,10 +799,13 @@ export default function App() {
       if (isAuthFail(msg) || /连不上|密钥不完整|次已经用完|需要先登录/.test(msg)) throw err
     }
     const parsed = extractTrip(acc)
-    const firstAsk = fresh ? '' : bubbles.find((b) => b.role === 'user' && b.text.trim())?.text || ''
-    const nextTrip = parsed || tripFromPlan(plan, firstAsk)
+    const firstAsk = fresh
+      ? userText
+      : (bubbles.find((b) => b.role === 'user' && b.text.trim() && b.text.trim() !== '确认生成')?.text || userText || '')
+    // 模型若吐了空 days，不能挡住大纲兜底；用用户原话里的「5日4晚」也能排出天数
+    const nextTrip = (parsed && parsed.days?.length ? parsed : null) || tripFromPlan(plan, firstAsk)
     if (!nextTrip || !Array.isArray(nextTrip.days) || !nextTrip.days.length) {
-      throw new Error('确认大纲里还没有按天的安排。请先写出 D1 / D2 再出页。')
+      throw new Error('还没有按天的安排。请再说一次目的地和几天几晚，或先写出 D1 / D2。')
     }
     const dateSource = [userText, ...bubbles.filter((b) => b.role === 'user').map((b) => b.text)].join('\n')
     stampUndatedTrip(nextTrip, dateSource)
@@ -1629,10 +1640,21 @@ export default function App() {
 
   async function onImage() {
     if (imageBusy) return
+    if (generating) {
+      showToast('预览还在生成，等这一页出来再导出')
+      return
+    }
+    if (!html.trim()) {
+      showToast('请先生成行程再导出')
+      return
+    }
+    const epoch = exportEpoch.current
     setImageBusy(true)
+    setError((prev) => (/^导出超时|^预览尚未就绪/.test(prev) ? '' : prev))
     try {
       showToast('正在导出长图…')
       const { blob, filename } = await exportImage(html, device)
+      if (exportEpoch.current !== epoch) return
       if (needsMobileImageSheet()) {
         setImageExport((prev) => {
           if (prev?.url) URL.revokeObjectURL(prev.url)
@@ -1644,11 +1666,12 @@ export default function App() {
         showToast('长图已开始下载')
       }
     } catch (err) {
+      if (exportEpoch.current !== epoch) return
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
       showToast(msg)
     } finally {
-      setImageBusy(false)
+      if (exportEpoch.current === epoch) setImageBusy(false)
     }
   }
 
@@ -2090,7 +2113,7 @@ export default function App() {
             )}
             {import.meta.env.DEV && <button type="button" className="save-seed" onClick={() => void saveAsSeed()}>存为示例</button>}
             <button type="button" onClick={() => setShareOpen(true)}>分享</button>
-            <button type="button" className="export-image" disabled={imageBusy} onClick={() => void onImage()}>{imageBusy ? '导出中…' : '导出图片'}</button>
+            <button type="button" className="export-image" disabled={imageBusy || generating} onClick={() => void onImage()}>{imageBusy ? '导出中…' : '导出图片'}</button>
             <button type="button" className="primary export-h5" onClick={() => { exportH5(html); showToast('H5 已下载') }}>导出 H5</button>
           </div>}
         </div>
@@ -2334,7 +2357,7 @@ export default function App() {
                     {shareBusy ? '准备卡片…' : '发到微信'}
                   </button>
                   <button type="button" onClick={() => void onCopySnippet()}>复制文案</button>
-                  <button type="button" disabled={imageBusy || !html.trim()} onClick={() => void onShareLongImage()}>
+                  <button type="button" disabled={imageBusy || generating || !html.trim()} onClick={() => void onShareLongImage()}>
                     {imageBusy ? '出图中…' : '分享长图'}
                   </button>
                 </div>

@@ -39,8 +39,10 @@ export function countPeople(text: string): number | null {
 }
 
 export function statedDays(text: string): number | null {
-  const m = String(text || '').match(new RegExp(`(?<![第前后这那每])(${NUM})\\s*(?:天|日游)`))
-  return m ? toNum(m[1]) : null
+  // 「3天2晚」「5日4晚」「两天」「1日游」都认；「第3天 / 每日」不算总天数
+  const m = String(text || '').match(new RegExp(`(?<![第前后这那每])(${NUM})\\s*(?:天|日游|日)`))
+  const n = m ? toNum(m[1]) : null
+  return n != null && n >= 1 && n <= 15 ? n : null
 }
 
 // 指着现有行程的某一天、某一格说话，一定是在改这一趟

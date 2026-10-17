@@ -74,9 +74,27 @@ export function tripFromPlan(plan: string, ask = ''): Trip | null {
     })
   }
   if (!days.length) {
-    const n = parseInt(text.match(/(\d)\s*[日天]/)?.[1] || '', 10)
-    if (n >= 1 && n <= 10) {
-      for (let i = 0; i < n; i += 1) days.push({ theme: `第 ${i + 1} 天`, slots: [], dining: [] })
+    // 天数常在用户第一句话里（如「5日4晚」），大纲待确认段可能没写 D 行
+    const n = statedDays(ask) || statedDays(text) || parseInt(text.match(/(\d{1,2})\s*[日天]/)?.[1] || '', 10)
+    if (n >= 1 && n <= 15) {
+      for (let i = 0; i < n; i += 1) {
+        days.push({
+          theme: `第 ${i + 1} 天`,
+          slots: [
+            { kind: 'route', name: '当日线路' },
+            { kind: 'spot', name: '待定' },
+            { kind: 'spot', name: '午休' },
+            { kind: 'spot', name: '待定' },
+            { kind: 'stay', name: i === n - 1 ? '返程' : '当日住宿' },
+            { kind: 'food', name: '当日特色餐饮' },
+          ],
+          dining: [
+            { meal: '早餐', place: '就近简餐' },
+            { meal: '午餐', place: '当地特色' },
+            { meal: '晚餐', place: '当日特色餐饮' },
+          ],
+        })
+      }
     }
   }
   if (!days.length) return null

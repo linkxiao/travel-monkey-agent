@@ -222,7 +222,7 @@ async function inlineImageUrl(url: string, maxEdge: number) {
   let blob: Blob | null = null
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(abs, { cache: attempt ? 'reload' : 'force-cache' })
+      const res = await fetch(abs, { cache: attempt ? 'reload' : 'force-cache', signal: AbortSignal.timeout(8000) })
       if (!res.ok) continue
       const buf = await res.arrayBuffer()
       if (buf.byteLength < 32) continue
@@ -324,8 +324,7 @@ async function prepareExportMedia(doc: Document, maxEdge: number, concurrency: n
       img.src = data
       img.style.display = 'block'
     } else {
-      const abs = exportPhotoUrl(raw, window.location.href)
-      if (abs) img.src = abs
+      img.removeAttribute('src')
     }
     img.removeAttribute('data-export-src')
   })
@@ -453,6 +452,77 @@ function lockPreview(iframe: HTMLIFrameElement, doc: Document, width: number) {
   }
 }
 
+function exportPieces(doc: Document) {
+  const wrap = doc.querySelector<HTMLElement>('.page-wrap')
+  if (!wrap) return [doc.body]
+  const pieces: HTMLElement[] = []
+  const push = (el: HTMLElement) => {
+    if (Math.max(el.offsetHeight, el.scrollHeight) < 2) return
+    pieces.push(el)
+  }
+  for (const child of Array.from(wrap.children)) {
+    if (!(child instanceof HTMLElement)) continue
+    if (child.id === 'timeline-container') {
+      const days = Array.from(child.querySelectorAll<HTMLElement>(':scope > .day-block'))
+      if (days.length) {
+        days.forEach(push)
+        continue
+      }
+    }
+    push(child)
+  }
+  return pieces.length ? pieces : [doc.body]
+}
+
+function canvasOptions(width: number, height: number, mobile: boolean) {
+  const fitted = outputSize(width, height, mobile)
+  return {
+    backgroundColor: '#f4efe6',
+    width,
+    height,
+    canvasWidth: fitted.canvasWidth,
+    canvasHeight: fitted.canvasHeight,
+    pixelRatio: 1,
+    cacheBust: false,
+    // 每日图的差别只在 ?u= 上。默认缓存会丢掉查询参数，整页行程图变成同一张或空白。
+    includeQueryParams: true,
+    skipFonts: true,
+    filter: skipCapture,
+    style: {
+      margin: '0',
+      padding: '0',
+      transform: 'none',
+      width: `${width}px`,
+      maxWidth: `${width}px`,
+      boxSizing: 'border-box',
+    },
+    imagePlaceholder: IMAGE_PLACEHOLDER,
+    onImageErrorHandler: () => undefined,
+  }
+}
+
+function stitchCanvases(parts: HTMLCanvasElement[], mobile: boolean) {
+  const width = Math.max(...parts.map((c) => c.width), 1)
+  const rawHeight = parts.reduce((sum, c) => sum + Math.round(c.height * (width / Math.max(c.width, 1))), 0)
+  const cap = mobile ? 16384 : 32767
+  const scale = rawHeight > cap ? cap / rawHeight : 1
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width * scale))
+  canvas.height = Math.max(1, Math.round(rawHeight * scale))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('导出结果是空的，请先生成行程再试')
+  ctx.fillStyle = '#f4efe6'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  let y = 0
+  for (const part of parts) {
+    const w = Math.round(width * scale)
+    const h = Math.round(part.height * (width / Math.max(part.width, 1)) * scale)
+    ctx.drawImage(part, 0, y, w, h)
+    y += h
+  }
+  return canvas
+}
+
 function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -481,35 +551,32 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
       await nextFrame(win)
       height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 4096)
     }
-    const fitted = outputSize(width, height, mobile)
     const lib = await import('html-to-image')
-    const canvas = await withTimeout(
-      lib.toCanvas(doc.body, {
-        backgroundColor: '#f4efe6',
-        width,
-        height,
-        canvasWidth: fitted.canvasWidth,
-        canvasHeight: fitted.canvasHeight,
-        pixelRatio: 1,
-        cacheBust: false,
-        // 每日图的差别只在 ?u= 上。默认缓存会丢掉查询参数，整页行程图变成同一张或空白。
-        includeQueryParams: true,
-        skipFonts: true,
-        filter: skipCapture,
-        style: {
-          margin: '0',
-          padding: '0',
-          transform: 'none',
-          width: `${width}px`,
-          maxWidth: `${width}px`,
-          boxSizing: 'border-box',
-        },
-        imagePlaceholder: IMAGE_PLACEHOLDER,
-        onImageErrorHandler: () => undefined,
-      }),
-      mobile ? 45000 : 60000,
-      '导出超时：页面太长或图片未加载完，请等预览出图后再试',
-    )
+    const sliceLimit = mobile ? 22000 : 25000
+    let canvas: HTMLCanvasElement
+    // 整天一起截容易超过一分钟。按封面、每一天、页脚分段截再拼回去。
+    if (height > 2800) {
+      const pieces = exportPieces(doc)
+      const parts: HTMLCanvasElement[] = []
+      for (const el of pieces) {
+        const pieceHeight = Math.ceil(Math.max(el.scrollHeight, el.offsetHeight))
+        if (pieceHeight < 2) continue
+        const part = await withTimeout(
+          lib.toCanvas(el, canvasOptions(width, pieceHeight, mobile)),
+          sliceLimit,
+          '导出超时：页面太长或图片未加载完，请等预览出图后再试',
+        )
+        parts.push(part)
+      }
+      if (!parts.length) throw new Error('导出结果是空的，请先生成行程再试')
+      canvas = stitchCanvases(parts, mobile)
+    } else {
+      canvas = await withTimeout(
+        lib.toCanvas(doc.body, canvasOptions(width, height, mobile)),
+        mobile ? 45000 : 60000,
+        '导出超时：页面太长或图片未加载完，请等预览出图后再试',
+      )
+    }
     const blob = await canvasToJpeg(canvas, mobile ? 0.82 : 0.88)
     return {
       blob,

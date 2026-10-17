@@ -9,7 +9,7 @@ import { askTitle, tripFromPlan } from '../src/lib/plan.ts'
 import { answeredAskKeys, extractAskItems, omitAnsweredAsks } from '../src/lib/ask.ts'
 import { researchQuery } from '../server/research.mjs'
 import { resolveTargets } from '../src/lib/target.ts'
-import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, findUnseenInHtml, inferChangesFromText, inferEditFrom, composePhotoMode, extractPhotoSignals, interpretPhotoIntent, interpretPhotoMode, isPhotoAllFollowup, isPhotoScopeClarify, photoOutcome, resolvePhotoIntent, stripEditClaim, wantsAllPhotoScope, wantsFullPhotoReplace, wantsMissingPhotos, wantsPhotos, wantsReplacePhotos, wantsSpotPhotos, wantsTripEdit } from '../src/lib/trip.ts'
+import { applyAdds, applyChanges, applyPhotoTo, applyReplaceDays, collectPhotoRequest, collectPhotos, explicitPhotoQuery, extractEnvelope, extractTrip, findUnseenInHtml, inferChangesFromText, inferEditFrom, composePhotoMode, extractPhotoSignals, interpretPhotoIntent, interpretPhotoMode, isPhotoAllFollowup, isPhotoScopeClarify, photoOutcome, resolvePhotoIntent, stripEditClaim, wantsAllPhotoScope, wantsFullPhotoReplace, wantsMissingPhotos, wantsPhotos, wantsReplacePhotos, wantsSpotPhotos, wantsTripEdit } from '../src/lib/trip.ts'
 import { buildRouteMessages, carryLine, countPeople, isNewTask, localTurn, parseTurn, planPrefs, portablePrefs, statedDays, tripHead, tripNames } from '../src/lib/route.ts'
 import { mentionedDays } from '../src/lib/target.ts'
 import zlib from 'node:zlib'
@@ -530,6 +530,7 @@ const dayWith = (stay) => ({
   ok('人数：常见说法都认', countPeople('一家三口') === 3 && countPeople('两大一小') === 3 && countPeople('6个人去') === 6 && countPeople('两人轻装') === 2
     && countPeople('人均3000元') === null && countPeople('晚饭换一家') === null)
   ok('天数：第N天不算天数', statedDays('改成两日游') === 2 && statedDays('第3天轻松点') === null && statedDays('5天4晚') === 5)
+  ok('天数：5日4晚也认', statedDays('5人信阳、麻城5日4晚，深圳出发') === 5 && statedDays('三天两晚') === 3)
   const parsed = parseTurn('{"task":{"places":["甲景点"],"people":3},"now":{"places":["乙景点"],"people":"x"},"action":"edit","prefs":["不吃辣","膝盖不好","不吃辣"]}')
   ok('解析：目的地和人数照收，认不出的人数当没说', parsed?.task.people === 3 && parsed.now.people === null && parsed.now.places.join() === '乙景点')
   ok('解析：偏好去重', parsed?.prefs.join() === '不吃辣,膝盖不好')
@@ -744,6 +745,11 @@ ok('大纲兜底标题不拿待确认问句', tripFromPlan(askPlan).title === '1
   ok('答过的确认题不再抽成卡片', omitAnsweredAsks(again, keys).length === 0 && again.length === 1)
 }
 ok('大纲兜底标题用用户第一句话', tripFromPlan(askPlan, '京都、奈良5天4晚、两人，偏寺院、樱花、居酒屋、咖啡和人文，住町屋').title === '京都奈良 5 日 · 寺院与樱花')
+ok('空 days JSON 不当真行程', extractTrip('{"title":"信阳","days":[]}') === null)
+{
+  const noDays = tripFromPlan('人格：旅居\n待确认：\n1. 节奏？\n答案：A.旅居', '5人信阳、麻城5日4晚，深圳出发')
+  ok('大纲无D行时用用户话天数兜底', noDays?.days?.length === 5 && /信阳|麻城/.test(String(noDays?.title || '')))
+}
 {
   const start = nextMonthFirst(new Date('2026-10-17T01:00:00Z'))
   ok('十月之后默认下个月1号', start === '2026-11-01')

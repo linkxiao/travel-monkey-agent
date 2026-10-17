@@ -68,7 +68,8 @@ export function parseJsonish(text: string): unknown | null {
 
 export function extractTrip(text: string): Trip | null {
   const obj = parseJsonish(text) as Trip | null
-  if (obj && typeof obj === 'object' && (obj.title || obj.days) && Array.isArray(obj.days)) {
+  // 必须有按天的 days；空数组不能当真行程，否则会挡住大纲兜底
+  if (obj && typeof obj === 'object' && Array.isArray(obj.days) && obj.days.length > 0) {
     return obj
   }
   return null
