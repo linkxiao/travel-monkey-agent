@@ -11,7 +11,8 @@ function renderTrip(trip) {
   if (!trip.title) throw new Error('缺 trip.title');
   const ui = Object.assign({
     heroEyebrow: '定制行程',
-    heroBanner: 'travel-assets/xian/banner-user-forest3.jpg',
+    // 页头只要网页可读尺寸；原图 forest3 约 8.7MB，勿作默认。
+    heroBanner: 'travel-assets/xian/banner-hero.jpg',
     heroBadge: '线路 · 景点 · 住宿',
     heroSub: '',
     overviewLead: '',
