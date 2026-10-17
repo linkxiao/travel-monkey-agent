@@ -62,7 +62,7 @@ test('wechat crawler gets a compact card document', () => {
   const html = shareCardDocument({
     title: '京都奈良',
     description: '寺院与樱花',
-    pageUrl: 'http://119.91.204.216/s/abc?v=6',
+    pageUrl: 'http://119.91.204.216/s/abc',
     image: 'http://119.91.204.216/s/abc/card.jpg',
   })
   assert.match(html, /property="og:title" content="京都奈良"/)

@@ -370,30 +370,31 @@ export async function wechatConfigFor(pageUrl) {
   }
 }
 
-function sendHtml(res, code, html, cache) {
+function sendHtml(res, code, html, cache, { csp = false } = {}) {
   res.statusCode = code
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('X-Frame-Options', 'SAMEORIGIN')
-  // 绝不能对分享页加 CSP sandbox：微信抓卡片时只要看到 sandbox 就整页放弃，
-  // 发送框里就只剩一条 URL。昨天 18:35 能出标题/摘要，正是当时还没有这条。
-  // 行程页脚本仍用常规 CSP 收紧，登录 token 在主站 localStorage，分享页勿再写敏感接口。
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'none'",
-      "img-src * data: blob:",
-      "media-src * data: blob:",
-      "style-src 'unsafe-inline' https: data:",
-      "font-src https: data:",
-      "script-src 'unsafe-inline' 'self' https://res.wx.qq.com https://res2.wx.qq.com",
-      "connect-src https: http: 'self'",
-      "base-uri 'self'",
-      "form-action 'none'",
-      "frame-ancestors 'none'",
-    ].join('; '),
-  )
+  // 分享页默认不加 CSP：昨天下午能出卡片的链接当时就没有 CSP。
+  // 抓取响应尤其不能带 CSP；人在微信里打开行程页也不靠 CSP 拦登录态。
+  if (csp) {
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'none'",
+        "img-src * data: blob:",
+        "media-src * data: blob:",
+        "style-src 'unsafe-inline' https: data:",
+        "font-src https: data:",
+        "script-src 'unsafe-inline' 'self' https://res.wx.qq.com https://res2.wx.qq.com",
+        "connect-src https: http: 'self'",
+        "base-uri 'self'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+    )
+  }
   res.setHeader('Cache-Control', cache)
   res.end(html)
 }
@@ -458,11 +459,13 @@ const MISSING = `<!DOCTYPE html>
 <p style="margin:0;line-height:1.7;color:#5d6578">请让对方重新生成分享链接。</p></main>
 </body></html>`
 
-/** 换版本号，让微信把链接当成新地址重新抓，不沿用抓失败的缓存。 */
-export const SHARE_REV = '6'
-
+/**
+ * 分享地址必须是纯路径 /s/:id，不要带 ?v=。
+ * 聊天记录里唯一出过卡片的是 http://…/s/e10346…（无查询串）；
+ * 带 ?v=4/?v=6 的全部掉成绿气泡裸链。
+ */
 export function sharePagePath(id) {
-  return `/s/${id}?v=${SHARE_REV}`
+  return `/s/${id}`
 }
 
 export function matchShare(pathname) {
@@ -595,21 +598,27 @@ export async function handleShareGet(req, res) {
     return
   }
   const origin = requestOrigin(req)
-  // 不 302：微信抓卡片经常不跟跳转，一跳就只剩裸 URL。任意 ?v= 都直接 200 + OG。
   const pageUrl = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
   const cardImage = origin ? `${origin}/s/${id}/card.jpg` : ''
   const meta = extractShareMeta(html)
   if (wantsLinkPreview(req)) {
+    // 抓取响应：短 HTML + 零 CSP，贴近昨天下午能出卡片时的形态
     sendHtml(res, 200, shareCardDocument({
       title: meta.title,
       description: meta.description,
       pageUrl,
       image: cardImage,
-    }), 'public, max-age=300')
+    }), 'public, max-age=300', { csp: false })
     return
   }
   const wechat = await wechatConfigFor(pageUrl.split('#')[0])
-  sendHtml(res, 200, decorateShareHtml(html, { pageUrl, origin, wechat, cardImage }), wechat ? 'private, no-store' : 'public, max-age=86400')
+  sendHtml(
+    res,
+    200,
+    decorateShareHtml(html, { pageUrl, origin, wechat, cardImage }),
+    wechat ? 'private, no-store' : 'public, max-age=86400',
+    { csp: false },
+  )
 }
 
 function readBody(req, limit) {
@@ -645,7 +654,6 @@ export async function handleSharePublish(req, res) {
     const origin = requestOrigin(req)
     const meta = extractShareMeta(body.html)
     try { await ensureShareCard(id) } catch { /* 首次抓取时再生成 */ }
-    // ?v= 让微信把这条当成新链接重新抓卡片，避免沿用之前抓失败的缓存
     const page = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
     send(200, {
       id,

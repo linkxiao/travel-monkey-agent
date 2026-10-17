@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { h5ShareData } from '../src/lib/h5Share.ts'
 
-const card = { title: '六安宣城5天4晚', url: 'http://119.91.204.216/s/abc?v=6' }
+const card = { title: '六安宣城5天4晚', url: 'http://119.91.204.216/s/abc' }
 
 test('iPhone share is a bare link so WeChat can build the card', () => {
   const data = h5ShareData(card, 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')
