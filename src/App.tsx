@@ -5,6 +5,7 @@ import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type S
 import { copyText } from './lib/clipboard'
 import { downloadBlob, exportH5, exportImage, needsMobileImageSheet, publishShare, shareJpegFile, shareReach, type ShareCard } from './lib/export'
 import { shareH5Card } from './lib/h5Share'
+import { buildWechatShareCard } from './lib/wechatCard'
 import { formatShareSnippet } from './lib/shareSnippet'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
@@ -18,6 +19,7 @@ import { BrandLogo } from './BrandLogo'
 import { TOKEN_KEY, fetchSession, loginAccount, logoutAccount, registerAccount, requestAuthCode } from './lib/auth'
 import { repairMobileChecklist } from './lib/html'
 import { todayAdvice } from './lib/today'
+import { stampUndatedTrip } from '../server/dates.mjs'
 import { ASK_WRITE_HINT, choicesForQuestion, extractAskItems, formatAskAnswers, tripFromPlan } from './lib/plan'
 import { answeredAskKeys, omitAnsweredAsks } from './lib/ask'
 import { buildChatMessages, buildFillMessages, buildPlanMessages, userPack } from './lib/context'
@@ -772,7 +774,7 @@ export default function App() {
     })
   }
 
-  async function runFill(plan: string, fresh = false) {
+  async function runFill(plan: string, fresh = false, userText = '') {
     const runId = runIdRef.current
     setGenerating(true)
     showWait('正在按确认的安排填写行程')
@@ -794,6 +796,8 @@ export default function App() {
     if (!nextTrip || !Array.isArray(nextTrip.days) || !nextTrip.days.length) {
       throw new Error('确认大纲里还没有按天的安排。请先写出 D1 / D2 再出页。')
     }
+    const dateSource = [userText, ...bubbles.filter((b) => b.role === 'user').map((b) => b.text)].join('\n')
+    stampUndatedTrip(nextTrip, dateSource)
     const persona = detectPersona(plan) || planningPersona
     if (persona && !nextTrip.persona) nextTrip.persona = persona
     if (research.hotelsByTier && !nextTrip.hotelHints) nextTrip.hotelHints = research.hotelsByTier
@@ -823,6 +827,7 @@ export default function App() {
         if (fixedRun.signal.aborted || runIdRef.current !== runId) return
         const fixed = extractTrip(fixedRun.acc)
         if (fixed) {
+          stampUndatedTrip(fixed, dateSource)
           if (research.hotelsByTier && !fixed.hotelHints) fixed.hotelHints = research.hotelsByTier
           out = await applyTrip(fixed, { fast: true, recordVersion: false })
         }
@@ -1102,7 +1107,7 @@ export default function App() {
     setBubbles((prev) => [...prev, { role: 'user', text: reply }, { role: 'assistant', text: '正在按你的选择生成行程页…', pending: true }])
     try {
       setPlanDraft(plan)
-      await runFill(plan)
+      await runFill(plan, false, reply)
     } catch (err) {
       if (runIdRef.current === runId) showFail(err instanceof Error ? err.message : String(err))
     } finally {
@@ -1311,7 +1316,7 @@ export default function App() {
       const plan = await runPlan([text, line].filter(Boolean).join('\n'), true, false)
       if (runIdRef.current !== runId || !plan) return
       // 还有待确认就先让人选。选完再填页，避免未答题就跑一整轮慢生成。
-      if (extractAskItems(plan).length === 0) await runFill(plan, true)
+      if (extractAskItems(plan).length === 0) await runFill(plan, true, [text, line].filter(Boolean).join('\n'))
     } finally {
       if (runIdRef.current === runId) setGenerating(false)
     }
@@ -1406,7 +1411,7 @@ export default function App() {
       }
       const ask = docs.length ? [text, attachmentsToPrompt(docs)].filter(Boolean).join('\n\n') : text
       if (confirmPlan) {
-        await runFill(planDraft)
+        await runFill(planDraft, false, ask)
         return
       }
       if (!routed) {
@@ -1431,7 +1436,7 @@ export default function App() {
         try {
           const plan = await runPlan(ask, false, false)
           if (runIdRef.current !== runId || !plan) return
-          if (extractAskItems(plan).length === 0) await runFill(plan)
+          if (extractAskItems(plan).length === 0) await runFill(plan, false, ask)
         } finally {
           if (runIdRef.current === runId) setGenerating(false)
         }
@@ -1552,21 +1557,31 @@ export default function App() {
       setShareLinkOpen(true)
       return
     }
-    if (card.image) void fetch(card.image, { method: 'GET', cache: 'reload' }).catch(() => {})
-    // 微信规则：打开蓝链后再点右上角，只会发出裸 URL。
-    // 卡片来自「聊天里粘贴纯链接」后微信服务器抓取 OG（标题/摘要/封面）。
-    // 所以这里绝不跳进分享页让用户去点 ···。
-    const result = await shareH5Card(card)
-    if (result === 'shared' || result === 'aborted') return
-    const ok = await copyText(card.url)
-    if (!ok) {
-      setShareLinkOpen(true)
-      setShareError('没有复制成功，请展开下方链接后手动复制，再到微信聊天里粘贴')
-      return
-    }
-    showToast('链接已复制。打开微信选好友，在对话框粘贴发送，才会出现标题和封面')
-    if (!/MicroMessenger/i.test(navigator.userAgent)) {
-      window.location.href = 'weixin://'
+    // 微信已基本不再给「裸 IP」链接生成标题/封面卡片（聊天里旧卡片是当年抓成功留下的）。
+    // 可靠做法：本地画出「标题+摘要+封面」卡片图，按图片发给好友；链接附在文字里可点开。
+    setShareBusy(true)
+    try {
+      if (card.image) void fetch(card.image, { method: 'GET', cache: 'reload' }).catch(() => {})
+      const file = await buildWechatShareCard(card)
+      const withFile = await shareJpegFile(file)
+      if (withFile === 'shared' || withFile === 'aborted') return
+      // 系统分享不可用时：先试只发链接，再退回复制
+      const linkOnly = await shareH5Card(card)
+      if (linkOnly === 'shared' || linkOnly === 'aborted') return
+      const ok = await copyText([card.title, card.description, card.url].filter(Boolean).join('\n'))
+      downloadBlob(file, file.name)
+      if (ok) showToast('卡片图已保存，链接已复制。打开微信把图片发给好友')
+      else {
+        setShareLinkOpen(true)
+        setShareError('卡片图已下载。请把图片发到微信；需要链接时再展开下方复制')
+      }
+      if (!/MicroMessenger/i.test(navigator.userAgent)) {
+        window.location.href = 'weixin://'
+      }
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : '卡片生成失败')
+    } finally {
+      setShareBusy(false)
     }
   }
 
@@ -2298,8 +2313,8 @@ export default function App() {
             <h2 id="share-title">分享行程</h2>
             <p className="share-lead">
               {preferSnippetShare
-                ? '点「发到微信」会复制行程链接。请到微信对话框里粘贴发送，才会出现标题、摘要和封面；不要打开链接后再点右上角。发朋友圈用「分享长图」。'
-                : '点「发到微信」复制链接，到微信对话框粘贴发送，才会出现标题、摘要和封面。打开链接后再点右上角只会发出网址。'}
+                ? '点「发到微信」会生成一张带标题、摘要和封面的卡片图，选好友发出去即可。发朋友圈用「分享长图」。'
+                : '点「发到微信」会生成带标题、摘要和封面的卡片图发给好友。微信对 IP 链接已不再自动出卡片。'}
             </p>
             {shareError && <p className="share-note">{shareError}</p>}
 

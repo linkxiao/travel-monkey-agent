@@ -218,7 +218,7 @@ function shareBar(card) {
 #tm-wx-share .tm-wx-tip{flex:1;min-width:0}
 </style>
 <div id="tm-wx-share" hidden>
-  <span class="tm-wx-tip">不要点右上角。请点「复制链接」，回到聊天粘贴发送，才会出现标题和封面</span>
+  <span class="tm-wx-tip">微信里点右上角只会发出网址。请回 Travel Monkey 点「发到微信」，发送带封面的卡片图</span>
   <button type="button" id="tm-wx-copy">复制链接</button>
 </div>
 <script>
