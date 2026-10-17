@@ -317,47 +317,63 @@ export async function wechatConfigFor(pageUrl) {
   }
 }
 
-function sendHtml(res, code, html, cache, { sandbox = true } = {}) {
+function sendHtml(res, code, html, cache) {
   res.statusCode = code
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('X-Frame-Options', 'SAMEORIGIN')
-  // sandbox 无 allow-same-origin：分享页脚本跑在独立源，读不到主站 localStorage 里的登录 token。
-  // 微信抓卡片时会因为 sandbox 放弃解析，抓取请求不带这条。
-  if (sandbox) {
-    res.setHeader(
-      'Content-Security-Policy',
-      [
-        "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
-        "default-src 'none'",
-        "img-src * data: blob:",
-        "media-src * data: blob:",
-        "style-src 'unsafe-inline' https: data:",
-        "font-src https: data:",
-        "script-src 'unsafe-inline' 'self' https://res.wx.qq.com",
-        "connect-src https: 'self'",
-        "base-uri 'self'",
-        "form-action 'none'",
-        "frame-ancestors 'none'",
-      ].join('; '),
-    )
-  }
+  // 绝不能对分享页加 CSP sandbox：微信抓卡片时只要看到 sandbox 就整页放弃，
+  // 发送框里就只剩一条 URL。昨天 18:35 能出标题/摘要，正是当时还没有这条。
+  // 行程页脚本仍用常规 CSP 收紧，登录 token 在主站 localStorage，分享页勿再写敏感接口。
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'none'",
+      "img-src * data: blob:",
+      "media-src * data: blob:",
+      "style-src 'unsafe-inline' https: data:",
+      "font-src https: data:",
+      "script-src 'unsafe-inline' 'self' https://res.wx.qq.com https://res2.wx.qq.com",
+      "connect-src https: http: 'self'",
+      "base-uri 'self'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+    ].join('; '),
+  )
   res.setHeader('Cache-Control', cache)
   res.end(html)
 }
 
-/** 人在微信里点开链接。UA 同样带 MicroMessenger，不能当成抓卡片的爬虫。 */
-export function isWeChatBrowser(ua) {
+/** 人在微信里点开链接（带 Sec-Fetch-Dest: document）。 */
+export function isWeChatBrowser(ua, headers = {}) {
   const s = String(ua || '')
-  if (!/MicroMessenger/i.test(s)) return false
-  return /MMWEBSDK|MMWEBID|\bXWEB\/|WindowsWechat|MacWechat|\bWeixin\b|Language\/|iPhone|iPad|Android|\bMobile\b/i.test(s)
+  if (!/MicroMessenger|WindowsWechat|MacWechat|\bWeChat\b/i.test(s)) return false
+  const dest = String(headers['sec-fetch-dest'] || '').toLowerCase()
+  if (dest === 'document' || dest === 'iframe') return true
+  // 老版本微信内置浏览器有时不带 Sec-Fetch，但仍像真人浏览：有 Mobile + Language
+  if (!dest && /Language\//i.test(s) && /Mobile\/|MMWEBSDK|MMWEBID|\bXWEB\//i.test(s)) return true
+  return false
 }
 
-export function isLinkCrawler(ua) {
+/**
+ * 微信服务器抓分享卡片的 UA 也带 MicroMessenger / Android / Language，
+ * 不能靠「像手机」来区分。真人打开几乎总会带 Sec-Fetch-Dest: document。
+ */
+export function isLinkCrawler(ua, headers = {}) {
   const s = String(ua || '')
-  if (isWeChatBrowser(s)) return false
-  return /MicroMessenger|WeChat|facebookexternalhit|Twitterbot|TelegramBot|WhatsApp|Slackbot|Discordbot|LinkedInBot|Bytespider/i.test(s)
+  if (isWeChatBrowser(s, headers)) return false
+  if (/facebookexternalhit|Twitterbot|TelegramBot|WhatsApp|Slackbot|Discordbot|LinkedInBot|Bytespider|SkypeUriPreview/i.test(s)) {
+    return true
+  }
+  // 微信/企业微信抓取：带 MicroMessenger，但不是上面认定的内置浏览器
+  return /MicroMessenger|WindowsWechat|MacWechat|\bWeChat\b|wxwork/i.test(s)
+}
+
+/** 给抓卡片的请求用：看完整请求头，不只看 UA。 */
+export function wantsLinkPreview(req) {
+  const headers = req?.headers || {}
+  return isLinkCrawler(headers['user-agent'], headers)
 }
 
 export function shareCardDocument({ title, description, pageUrl, image }) {
@@ -390,7 +406,7 @@ const MISSING = `<!DOCTYPE html>
 </body></html>`
 
 /** 换版本号，让微信把链接当成新地址重新抓，不沿用抓失败的缓存。 */
-export const SHARE_REV = '4'
+export const SHARE_REV = '5'
 
 export function sharePagePath(id) {
   return `/s/${id}?v=${SHARE_REV}`
@@ -521,25 +537,17 @@ export async function handleShareGet(req, res) {
     return
   }
   const origin = requestOrigin(req)
-  const canonical = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
-  const here = `${url.pathname.replace(/\/$/, '')}${url.search}`
-  if (here !== sharePagePath(id)) {
-    res.statusCode = 302
-    res.setHeader('Location', canonical)
-    res.setHeader('Cache-Control', 'no-store')
-    res.end()
-    return
-  }
-  const pageUrl = canonical
+  // 不 302：微信抓卡片经常不跟跳转，一跳就只剩裸 URL。任意 ?v= 都直接 200 + OG。
+  const pageUrl = origin ? `${origin}${sharePagePath(id)}` : sharePagePath(id)
   const cardImage = origin ? `${origin}/s/${id}/card.jpg` : ''
   const meta = extractShareMeta(html)
-  if (isLinkCrawler(req.headers['user-agent'])) {
+  if (wantsLinkPreview(req)) {
     sendHtml(res, 200, shareCardDocument({
       title: meta.title,
       description: meta.description,
       pageUrl,
       image: cardImage,
-    }), 'public, max-age=300', { sandbox: false })
+    }), 'public, max-age=300')
     return
   }
   const wechat = await wechatConfigFor(pageUrl.split('#')[0])
