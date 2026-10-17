@@ -62,24 +62,32 @@ export function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-export async function shareJpegFile(file: File): Promise<'shared' | 'aborted' | 'unavailable'> {
-  const payload = { files: [file], title: file.name }
-  if (typeof navigator.canShare === 'function') {
-    try {
-      if (!navigator.canShare(payload)) return 'unavailable'
-    } catch {
-      return 'unavailable'
+export async function shareJpegFile(
+  file: File,
+  extras: { title?: string; text?: string } = {},
+): Promise<'shared' | 'aborted' | 'unavailable'> {
+  if (typeof navigator.share !== 'function') return 'unavailable'
+  const title = extras.title || file.name
+  const text = String(extras.text || '').trim()
+  const withText: ShareData = { files: [file], title, ...(text ? { text } : {}) }
+  const fileOnly: ShareData = { files: [file], title }
+  const attempts = text ? [withText, fileOnly] : [fileOnly]
+  for (const payload of attempts) {
+    if (typeof navigator.canShare === 'function') {
+      try {
+        if (!navigator.canShare(payload)) continue
+      } catch {
+        continue
+      }
     }
-  } else if (typeof navigator.share !== 'function') {
-    return 'unavailable'
+    try {
+      await navigator.share(payload)
+      return 'shared'
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
+    }
   }
-  try {
-    await navigator.share(payload)
-    return 'shared'
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') return 'aborted'
-    return 'unavailable'
-  }
+  return 'unavailable'
 }
 
 function openExportFrame(html: string, width: number) {

@@ -5,7 +5,7 @@ import { fetchQuotaLeft, fetchServerConfig, streamChat, type ChatMessage, type S
 import { copyText } from './lib/clipboard'
 import { downloadBlob, exportH5, exportImage, needsMobileImageSheet, publishShare, shareJpegFile, shareReach, type ShareCard } from './lib/export'
 import { shareH5Card } from './lib/h5Share'
-import { buildWechatShareCard } from './lib/wechatCard'
+import { buildWechatShareCard, wechatShareCaption } from './lib/wechatCard'
 import { formatShareSnippet } from './lib/shareSnippet'
 import { getProvider, isAuthFail, keyLooksUnusable, keyMismatchHint, PROVIDERS, sanitizeApiKey } from './lib/models'
 import { WELCOME_HTML } from './lib/prompt'
@@ -1557,23 +1557,23 @@ export default function App() {
       setShareLinkOpen(true)
       return
     }
-    // 微信已基本不再给「裸 IP」链接生成标题/封面卡片（聊天里旧卡片是当年抓成功留下的）。
-    // 可靠做法：本地画出「标题+摘要+封面」卡片图，按图片发给好友；链接附在文字里可点开。
+    // 微信不再给裸 IP 出链接气泡。发「卡片图 + 完整行程链接」：
+    // 图上带二维码，文字里也带 H5，好友能打开整页行程。
     setShareBusy(true)
     try {
       if (card.image) void fetch(card.image, { method: 'GET', cache: 'reload' }).catch(() => {})
       const file = await buildWechatShareCard(card)
-      const withFile = await shareJpegFile(file)
+      const caption = wechatShareCaption(card)
+      const withFile = await shareJpegFile(file, { title: card.title || '行程', text: caption })
       if (withFile === 'shared' || withFile === 'aborted') return
-      // 系统分享不可用时：先试只发链接，再退回复制
       const linkOnly = await shareH5Card(card)
       if (linkOnly === 'shared' || linkOnly === 'aborted') return
-      const ok = await copyText([card.title, card.description, card.url].filter(Boolean).join('\n'))
+      const ok = await copyText(caption)
       downloadBlob(file, file.name)
-      if (ok) showToast('卡片图已保存，链接已复制。打开微信把图片发给好友')
+      if (ok) showToast('卡片图已保存（含二维码），链接已复制。发图后也可再粘贴链接')
       else {
         setShareLinkOpen(true)
-        setShareError('卡片图已下载。请把图片发到微信；需要链接时再展开下方复制')
+        setShareError('卡片图已下载。请发图给好友；完整行程链接在下方可复制')
       }
       if (!/MicroMessenger/i.test(navigator.userAgent)) {
         window.location.href = 'weixin://'
@@ -2313,8 +2313,8 @@ export default function App() {
             <h2 id="share-title">分享行程</h2>
             <p className="share-lead">
               {preferSnippetShare
-                ? '点「发到微信」会生成一张带标题、摘要和封面的卡片图，选好友发出去即可。发朋友圈用「分享长图」。'
-                : '点「发到微信」会生成带标题、摘要和封面的卡片图发给好友。微信对 IP 链接已不再自动出卡片。'}
+                ? '点「发到微信」会生成卡片图（含完整行程二维码），并附上 H5 链接。好友扫码或点链接即可打开整页。发朋友圈用「分享长图」。'
+                : '点「发到微信」发送卡片图 + 完整行程链接。图上有二维码，好友能打开整页行程。'}
             </p>
             {shareError && <p className="share-note">{shareError}</p>}
 

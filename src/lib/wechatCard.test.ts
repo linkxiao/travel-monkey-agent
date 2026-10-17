@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { wechatShareCaption } from './wechatCard.ts'
 
-// Node 里没有 canvas/Image，这里只校验模块可加载与类型导出面。
-test('wechat card module exports builder', async () => {
-  const mod = await import('./wechatCard.ts')
-  assert.equal(typeof mod.buildWechatShareCard, 'function')
+test('share caption always carries the full trip link', () => {
+  const text = wechatShareCaption({
+    title: '京都奈良',
+    url: 'http://119.91.204.216.sslip.io/s/abc',
+  })
+  assert.match(text, /京都奈良/)
+  assert.match(text, /打开完整行程/)
+  assert.match(text, /sslip\.io\/s\/abc/)
 })

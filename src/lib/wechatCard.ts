@@ -1,4 +1,6 @@
-/** 画一张接近微信链接卡片的图：标题 + 摘要 + 封面。IP 链接不再被微信抓取时，用这张图发给好友。 */
+import { encode } from 'uqr'
+
+/** 画一张分享卡：标题 + 摘要 + 封面 + 扫码打开完整行程。 */
 
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
   const chars = Array.from(String(text || '').trim())
@@ -39,18 +41,33 @@ async function loadCover(src: string): Promise<HTMLImageElement | null> {
     if (!blob.type.startsWith('image/') || blob.size < 200) return null
     const url = URL.createObjectURL(blob)
     try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      return await new Promise<HTMLImageElement>((resolve, reject) => {
         const el = new Image()
         el.onload = () => resolve(el)
         el.onerror = () => reject(new Error('cover'))
         el.src = url
       })
-      return img
     } finally {
       URL.revokeObjectURL(url)
     }
   } catch {
     return null
+  }
+}
+
+function drawQr(ctx: CanvasRenderingContext2D, link: string, x: number, y: number, box: number) {
+  const matrix = encode(link, { ecc: 'M' })
+  const n = matrix.size
+  const cell = box / n
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(x, y, box, box)
+  ctx.fillStyle = '#0e1530'
+  for (let row = 0; row < n; row++) {
+    for (let col = 0; col < n; col++) {
+      if (matrix.data[row][col]) {
+        ctx.fillRect(x + col * cell, y + row * cell, Math.ceil(cell), Math.ceil(cell))
+      }
+    }
   }
 }
 
@@ -61,14 +78,22 @@ export type WechatCardInput = {
   url?: string
 }
 
-/** 输出约 24–40KB 的 JPEG，可直接用系统分享发到微信。 */
+/** 附在分享文字里的完整行程链接说明。 */
+export function wechatShareCaption(card: WechatCardInput) {
+  const title = String(card.title || '').trim() || '行程'
+  const url = String(card.url || '').trim()
+  return url ? `${title}\n打开完整行程：\n${url}` : title
+}
+
+/** 输出 JPEG：上半是标题封面，下半是二维码，扫码即可打开完整 H5。 */
 export async function buildWechatShareCard(card: WechatCardInput): Promise<File> {
   const title = String(card.title || '').trim() || '行程'
   const description = String(card.description || '').trim() || '打开查看每天的路线、三餐和住宿。'
+  const link = String(card.url || '').trim()
   const cover = await loadCover(String(card.image || '').trim())
 
   const width = 600
-  const height = 240
+  const height = link ? 420 : 240
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -77,9 +102,6 @@ export async function buildWechatShareCard(card: WechatCardInput): Promise<File>
 
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, width, height)
-  ctx.strokeStyle = '#e6e8ef'
-  ctx.lineWidth = 2
-  ctx.strokeRect(1, 1, width - 2, height - 2)
 
   const thumb = 132
   const pad = 28
@@ -103,7 +125,7 @@ export async function buildWechatShareCard(card: WechatCardInput): Promise<File>
   }
 
   const boxX = width - pad - thumb
-  const boxY = Math.round((height - thumb) / 2)
+  const boxY = 36
   ctx.fillStyle = '#eef1f6'
   ctx.fillRect(boxX, boxY, thumb, thumb)
   if (cover) {
@@ -119,9 +141,42 @@ export async function buildWechatShareCard(card: WechatCardInput): Promise<File>
     ctx.fillText('封面', boxX + 46, boxY + 72)
   }
 
+  if (link) {
+    ctx.strokeStyle = '#e6e8ef'
+    ctx.beginPath()
+    ctx.moveTo(pad, 200)
+    ctx.lineTo(width - pad, 200)
+    ctx.stroke()
+
+    const qr = 150
+    const qrX = pad
+    const qrY = 224
+    drawQr(ctx, link, qrX, qrY, qr)
+
+    ctx.fillStyle = '#0e1530'
+    ctx.font = '600 22px "Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif'
+    ctx.fillText('扫码打开完整行程', qrX + qr + 20, qrY + 48)
+    ctx.fillStyle = '#5d6578'
+    ctx.font = '400 16px "Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif'
+    for (const line of wrapLines(ctx, '每日路线、景点、住宿和餐饮都在网页里', width - pad - (qrX + qr + 20), 2)) {
+      ctx.fillText(line, qrX + qr + 20, qrY + 84)
+      y = qrY + 84
+    }
+    ctx.fillStyle = '#8b93a7'
+    ctx.font = '400 13px "DM Mono",Menlo,monospace'
+    for (const line of wrapLines(ctx, link, width - pad - (qrX + qr + 20), 2)) {
+      y += 22
+      ctx.fillText(line, qrX + qr + 20, y)
+    }
+  }
+
+  ctx.strokeStyle = '#e6e8ef'
+  ctx.lineWidth = 2
+  ctx.strokeRect(1, 1, width - 2, height - 2)
+
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((out) => (out ? resolve(out) : reject(new Error('卡片导出失败'))), 'image/jpeg', 0.82)
+    canvas.toBlob((out) => (out ? resolve(out) : reject(new Error('卡片导出失败'))), 'image/jpeg', 0.84)
   })
-  const name = title.replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 36) || '行程'
-  return new File([blob], `${name}.jpg`, { type: 'image/jpeg' })
+  const name = title.replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 28) || '行程'
+  return new File([blob], `${name}-完整行程入口.jpg`, { type: 'image/jpeg' })
 }
