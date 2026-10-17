@@ -21,3 +21,18 @@ test('srcdoc photo urls are rewritten onto the page origin', () => {
 test('data urls stay embedded', () => {
   assert.equal(exportPhotoUrl('data:image/jpeg;base64,abc', page), 'data:image/jpeg;base64,abc')
 })
+
+test('external photos are forced through the same-origin proxy', () => {
+  const abs = exportPhotoUrl('https://upload.wikimedia.org/wikipedia/commons/a.jpg', page)
+  assert.equal(
+    abs,
+    'http://127.0.0.1:5177/travel-photo?u=' + encodeURIComponent('https://upload.wikimedia.org/wikipedia/commons/a.jpg'),
+  )
+})
+
+test('local travel-assets stay on the page origin', () => {
+  assert.equal(
+    exportPhotoUrl('travel-assets/xian/banner.jpg', page),
+    'http://127.0.0.1:5177/travel-assets/xian/banner.jpg',
+  )
+})

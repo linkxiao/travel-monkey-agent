@@ -196,20 +196,52 @@ function loadDataImage(data: string) {
   })
 }
 
+async function mapPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  if (!items.length) return
+  let cursor = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++
+      await worker(items[index])
+    }
+  })
+  await Promise.all(runners)
+}
+
+const inlineCache = new Map<string, string>()
+
 /** 在父页面把图片取成 JPEG。不从导出 iframe 里的 img 画布取值，避免跨域污染后整张被换成空白。 */
 async function inlineImageUrl(url: string, maxEdge: number) {
   const abs = exportPhotoUrl(url, window.location.href)
   if (!abs) return ''
   if (abs.startsWith('data:')) return abs
-  const res = await fetch(abs)
-  if (!res.ok) return ''
-  const blob = await res.blob()
-  if (blob.size < 32 || !blob.type.startsWith('image/')) return ''
+  const cacheKey = `${maxEdge}|${abs}`
+  const hit = inlineCache.get(cacheKey)
+  if (hit) return hit
+
+  let blob: Blob | null = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(abs, { cache: attempt ? 'reload' : 'force-cache' })
+      if (!res.ok) continue
+      const buf = await res.arrayBuffer()
+      if (buf.byteLength < 32) continue
+      blob = new Blob([buf], { type: res.headers.get('content-type') || 'image/jpeg' })
+      break
+    } catch {
+      /* retry */
+    }
+  }
+  if (!blob || !String(blob.type || 'image/').startsWith('image/')) return ''
+
   const data = await readBlob(blob)
   try {
     const img = await loadDataImage(data)
     const edge = Math.max(img.naturalWidth, img.naturalHeight)
-    if (!edge) return data
+    if (!edge) {
+      inlineCache.set(cacheKey, data)
+      return data
+    }
     const scale = edge > maxEdge ? maxEdge / edge : 1
     const w = Math.max(1, Math.round(img.naturalWidth * scale))
     const h = Math.max(1, Math.round(img.naturalHeight * scale))
@@ -217,37 +249,102 @@ async function inlineImageUrl(url: string, maxEdge: number) {
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')
-    if (!ctx) return data
+    if (!ctx) {
+      inlineCache.set(cacheKey, data)
+      return data
+    }
     ctx.drawImage(img, 0, 0, w, h)
-    return canvas.toDataURL('image/jpeg', 0.72)
+    const jpeg = canvas.toDataURL('image/jpeg', 0.74)
+    inlineCache.set(cacheKey, jpeg)
+    return jpeg
   } catch {
+    inlineCache.set(cacheKey, data)
     return data
   }
 }
 
-/** 导出前把大图压成小 JPEG。否则 html-to-image 会把原图（常见数 MB）整段塞进 SVG，手机上又慢又容易失败。 */
-async function shrinkExportMedia(doc: Document, maxEdge: number) {
-  const images = Array.from(doc.images || [])
-  await Promise.all(images.map(async (img) => {
-    img.loading = 'eager'
-    img.removeAttribute('srcset')
-    const raw = img.getAttribute('src') || ''
-    const data = await inlineImageUrl(raw, maxEdge).catch(() => '')
-    if (data) img.src = data
-  }))
-
-  const hero = doc.querySelector<HTMLElement>('.hero')
-  if (!hero) return
+function collectBackgroundUrls(doc: Document) {
   const view = doc.defaultView
-  const bg = view ? view.getComputedStyle(hero).backgroundImage : ''
-  if (!bg || bg === 'none') return
-  let next = bg
-  const urls = [...bg.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]).filter((u) => u && !u.startsWith('data:'))
-  for (const url of urls) {
-    const data = await inlineImageUrl(url, Math.max(maxEdge, 960)).catch(() => '')
-    if (data) next = next.split(url).join(data)
+  if (!view) return [] as { el: HTMLElement, urls: string[] }[]
+  const nodes = Array.from(doc.querySelectorAll<HTMLElement>([
+    '.hero',
+    '.slot-img-wrap',
+    '.hotel-option',
+    '.gallery-item',
+    '.dining-photos',
+    '[style*="background"]',
+  ].join(',')))
+  return nodes.map((el) => {
+    const bg = view.getComputedStyle(el).backgroundImage
+    if (!bg || bg === 'none') return { el, urls: [] as string[] }
+    const urls = [...bg.matchAll(/url\((['"]?)(.*?)\1\)/g)]
+      .map((m) => m[2])
+      .filter((u) => u && !u.startsWith('data:'))
+    return { el, urls }
+  }).filter((item) => item.urls.length)
+}
+
+/**
+ * 导出前准备实景图：
+ * 1. 立刻拆掉 onerror，避免加载慢时被换成 emoji 占位
+ * 2. 父页经 /travel-photo 拉取并压成小 JPEG（并发受限，手机更稳）
+ * 3. 背景图一并内联
+ */
+async function prepareExportMedia(doc: Document, maxEdge: number, concurrency: number) {
+  inlineCache.clear()
+
+  doc.querySelectorAll('.img-fallback').forEach((el) => {
+    el.classList.remove('img-fallback')
+    el.removeAttribute('data-emoji')
+    el.querySelectorAll('.fallback-text').forEach((node) => node.remove())
+  })
+
+  const images = Array.from(doc.images || [])
+  for (const img of images) {
+    img.removeAttribute('onerror')
+    img.onerror = null
+    img.loading = 'eager'
+    img.removeAttribute('loading')
+    img.removeAttribute('srcset')
+    img.style.display = ''
+    img.style.visibility = 'visible'
+    img.style.opacity = '1'
+    const raw = img.getAttribute('src') || img.currentSrc || img.src || ''
+    if (raw && !raw.startsWith('data:')) {
+      img.setAttribute('data-export-src', raw)
+      img.removeAttribute('src')
+    }
   }
-  hero.style.backgroundImage = next
+
+  await mapPool(images, concurrency, async (img) => {
+    const raw = img.getAttribute('data-export-src') || ''
+    if (!raw) return
+    const data = await inlineImageUrl(raw, maxEdge).catch(() => '')
+    if (data) {
+      img.src = data
+      img.style.display = 'block'
+    } else {
+      const abs = exportPhotoUrl(raw, window.location.href)
+      if (abs) img.src = abs
+    }
+    img.removeAttribute('data-export-src')
+  })
+
+  const backgrounds = collectBackgroundUrls(doc)
+  await mapPool(backgrounds, Math.min(2, concurrency), async ({ el, urls }) => {
+    let bg = el.style.backgroundImage || doc.defaultView?.getComputedStyle(el).backgroundImage || ''
+    if (!bg || bg === 'none') return
+    let next = bg
+    for (const url of urls) {
+      const data = await inlineImageUrl(url, Math.max(maxEdge, 900)).catch(() => '')
+      if (data) next = next.split(url).join(data)
+    }
+    if (next !== bg) {
+      el.style.backgroundImage = next
+      el.style.backgroundSize = el.style.backgroundSize || 'cover'
+      el.style.backgroundPosition = el.style.backgroundPosition || 'center'
+    }
+  })
 }
 
 function outputSize(width: number, height: number, mobile: boolean) {
@@ -306,7 +403,9 @@ function lockPreview(iframe: HTMLIFrameElement, doc: Document, width: number) {
     .hero { min-height: 280px !important; background-size: cover !important; background-position: center !important; }
     .slot-img-wrap,
     .hotel-option .photo-carousel,
-    .slot-img-wrap .photo-carousel {
+    .slot-img-wrap .photo-carousel,
+    .gallery-item,
+    .hike-route-map {
       position: relative !important;
       display: block !important;
       height: 200px !important;
@@ -319,17 +418,27 @@ function lockPreview(iframe: HTMLIFrameElement, doc: Document, width: number) {
     .hotel-thumb,
     .carousel-slide,
     .carousel-slide img,
-    .dining-photos img {
+    .dining-photos img,
+    .dish-photo,
+    .gallery-item img,
+    .hike-route-map img,
+    figure img {
       position: relative !important;
       inset: auto !important;
       display: block !important;
       width: 100% !important;
       height: 200px !important;
       min-height: 200px !important;
+      max-height: none !important;
       object-fit: cover !important;
+      opacity: 1 !important;
+      visibility: visible !important;
     }
     .dining-photos { display: block !important; overflow: visible !important; }
-    .dining-photos img { width: 100% !important; height: 160px !important; min-height: 160px !important; margin: 8px 0 !important; }
+    .dining-photos img,
+    .dish-photo { width: 100% !important; height: 160px !important; min-height: 160px !important; margin: 8px 0 !important; }
+    .img-fallback::after { display: none !important; content: none !important; }
+    .fallback-text { display: none !important; }
   `
   doc.head.appendChild(style)
   const tracks = Array.from(doc.querySelectorAll<HTMLElement>('.carousel-track'))
@@ -360,8 +469,9 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
   const { iframe, doc, win } = await openExportFrame(html, width)
   let restore = () => {}
   try {
-    await shrinkExportMedia(doc, mobile ? 720 : 1200)
+    // 先锁布局并拆掉失败占位，再拉实景；避免 onerror 抢先把图藏掉
     restore = lockPreview(iframe, doc, width)
+    await prepareExportMedia(doc, mobile ? 640 : 1100, mobile ? 3 : 5)
     await nextFrame(win)
     let height = Math.min(Math.max(doc.documentElement.scrollHeight || doc.body.scrollHeight || 800, 800), 14000)
     // 手机画布高度大约到 4096 就会失败。先缩小整页再截，比截完再压更稳。
@@ -397,10 +507,10 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
         imagePlaceholder: IMAGE_PLACEHOLDER,
         onImageErrorHandler: () => undefined,
       }),
-      mobile ? 28000 : 45000,
+      mobile ? 45000 : 60000,
       '导出超时：页面太长或图片未加载完，请等预览出图后再试',
     )
-    const blob = await canvasToJpeg(canvas, mobile ? 0.8 : 0.88)
+    const blob = await canvasToJpeg(canvas, mobile ? 0.82 : 0.88)
     return {
       blob,
       filename: `${safeFilename(pageTitle(html))}.jpg`,
@@ -408,6 +518,7 @@ export async function exportImage(html: string, device: ExportDevice = 'phone') 
   } finally {
     restore()
     iframe.remove()
+    inlineCache.clear()
   }
 }
 
